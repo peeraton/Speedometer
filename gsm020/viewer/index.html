@@ -75,6 +75,17 @@
   .hud-bot .pane{display:flex;gap:16px;align-items:flex-end}
   .hud .neg{color:#2ecc71} .hud .pos{color:#ff6b6b}
   .fullbtn{width:44px;height:44px;font-size:22px;line-height:40px;text-align:center;background:#fff;color:#111;border:2px solid rgba(0,0,0,.25);border-radius:8px;cursor:pointer;padding:0;min-height:0}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;flex-wrap:wrap}
+  .seg button{border:0;border-radius:0;min-height:40px;padding:8px 12px;background:#181d24;color:var(--text);font-size:13px}
+  .seg button.sel{background:#3fa7ff;color:#fff;font-weight:700}
+  .ctrl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 14px 6px}
+  .ctrl select{background:#181d24;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px;font-size:13px;min-height:40px;max-width:100%}
+  .ctrl label{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--mut)}
+  .spdlbl{transform:translate(-50%,-130%);font:700 12px system-ui,sans-serif;color:#111;padding:1px 5px;border-radius:7px;border:1.5px solid #111;white-space:nowrap}
+  .spdlbl.max{background:#fff!important;border-color:#e74c3c;color:#e74c3c;font-size:13px}
+  .brk{transform:translate(-50%,-130%);font:700 12px system-ui,sans-serif;background:#e74c3c;color:#fff;padding:2px 6px;border-radius:7px;border:1.5px solid #fff;white-space:nowrap}
+  .brk.old{opacity:.45}
+  tr.shown td{background:#16324a}
   #status{padding:0 14px;font-size:12px;color:#f1c40f;min-height:16px}
   .sec{margin:8px 14px 4px;font-size:13px;color:var(--mut)}
   .fig{position:relative;height:200px;margin:0 14px;background:var(--card);border:1px solid var(--line);border-radius:12px}
@@ -118,6 +129,9 @@
       <div class="kv">ดีที่สุด<b id="lapBest" class="neg">-</b><span id="lapBestN"></span></div>
     </div>
     <div class="chips" id="secNow"></div>
+    <div class="ctrl" style="margin:8px 0 0"><span class="kv">เทียบกับ</span>
+      <div class="seg" role="group" aria-label="เทียบกับ"><button data-vref="best">รอบดีที่สุด</button><button data-vref="prev">รอบที่แล้ว</button></div>
+    </div>
     <div style="overflow-x:auto"><table class="laps" id="lapTable" hidden><thead><tr id="lapHead"></tr></thead><tbody></tbody></table></div>
   </div>
   <div class="lap" id="accBox" hidden>
@@ -135,6 +149,11 @@
   <div class="fig"><canvas id="chart"></canvas></div>
   <div id="mapWrap">
     <div class="sec">แผนที่</div>
+    <div class="ctrl">
+      <div class="seg" role="group" aria-label="สีเส้นทาง"><button data-mapc="spd" class="sel">สีตามความเร็ว</button><button data-mapc="acc">สีเร่ง/เบรก</button></div>
+      <select id="mapView" aria-label="แสดงบนแผนที่"></select>
+      <label><input type="checkbox" id="brkShow" checked style="width:20px;height:20px">จุดเบรก</label>
+    </div>
 <div id="mapBox">
 <div id="map"></div>
 <div class="hud hud-top"><div class="pane">
@@ -152,7 +171,8 @@
 </div></div>
 </div>
   </div>
-  <div class="legend"><span>ช้า</span><div class="grad"></div><span>เร็ว (<span id="lg">0</span> km/h)</span></div>
+  <div class="legend" id="lgSpd"><span>ช้า</span><div class="grad"></div><span>เร็ว (<span id="lg">0</span> km/h)</span></div>
+  <div class="legend" id="lgAcc" hidden><span style="color:#2ecc71">■ เร่ง</span><span style="color:#c9b458">■ ปล่อยคันเร่ง</span><span style="color:#e74c3c">■ เบรก</span><span style="margin-left:auto">เข้มตามแรง G</span></div>
 </div>
 
 <script>
@@ -175,7 +195,7 @@ function start(room) {
   $('app').hidden = false;
   $('roomLbl').textContent = '#' + room;
 
-  let pts = [];   // {t, spd, lat?, lon?}
+  let pts = [];   // {t, spd, g, dist, lat?, lon?} sorted by time
   let maxSpd = 0, lastMsg = 0, follow = true, map = null, trackLayer = null, car = null, segs = [];
 
   const stops = [[46,204,113],[241,196,15],[230,126,34],[231,76,60]];
@@ -219,12 +239,14 @@ function start(room) {
   new ResizeObserver(draw).observe(cv);
 
   // ---- map (only when the sender has phone GPS on) ----
+  let mapColor = 'spd', mapView = 'all', brkRows = [], drawn = [], drawPrev = null, lastLbl = -1e9, maxMk = null, maxPl = null, brkLayer = null, wantFit = true;
   function ensureMap() {
     if (map) return;
     $('mapWrap').style.display = 'block';
     map = L.map('map', {preferCanvas:true}).setView([13.7563,100.5018], 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:20, attribution:'© OpenStreetMap'}).addTo(map);
     trackLayer = L.layerGroup().addTo(map);
+    brkLayer = L.layerGroup().addTo(map);
     car = L.circleMarker([0,0], {radius:8, color:'#000', weight:2, fillColor:'#fff', fillOpacity:1});
     map.on('dragstart', () => { follow = false; locUi(); });
     map.on('click', () => { follow = true; locUi(); });
@@ -243,23 +265,97 @@ function start(room) {
     new FullCtl().addTo(map);
   }
   function locUi() { const b = document.getElementById('btnLoc'); if (b) b.classList.toggle('on', follow); }
-  function addSeg(a, b) {
-    const s = L.polyline([[a.lat,a.lon],[b.lat,b.lon]], {color:color(b.spd), weight:5, opacity:.9}).addTo(trackLayer);
-    s.bindTooltip(`${b.spd.toFixed(1)} km/h`, {sticky:true});
-    segs.push({s, v:b.spd});
+  function accColor(g) {
+    const mix = (a, b, t) => `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * t))})`, coast = [201, 180, 88];
+    if (g > 0.05) return mix(coast, [46, 204, 113], Math.min(1, (g - 0.05) / 0.4));
+    if (g < -0.05) return mix(coast, [231, 76, 60], Math.min(1, (-g - 0.05) / 0.4));
+    return `rgb(${coast})`;
   }
-  const recolor = () => segs.forEach(x => x.s.setStyle({color:color(x.v)}));
-  function redrawMap() {
-    const geo = pts.filter(p => p.lat !== undefined);
-    if (!geo.length) return;
+  const segColor = p => mapColor === 'acc' ? accColor(p.g || 0) : color(p.spd);
+  const recolor = () => drawn.forEach(d => { const k = segColor(d.p); d.seg && d.seg.setStyle({color:k}); d.dot.setStyle({fillColor:k}); });
+  // which time ranges to draw, like the tracker's "show on map" choice
+  function viewSets() {
+    const best = lapRows.length ? lapRows.reduce((x, r) => r[1] < x[1] ? r : x) : null, last = lapRows[lapRows.length - 1];
+    const lc = lap && lap.lc != null ? lap.lc : (last && last[7] != null ? last[7] : -Infinity);
+    const rng = r => r && r[6] != null ? {from: r[6], to: r[7]} : null;
+    if (mapView === 'cur') return [{from: lc, to: Infinity}];
+    if (mapView === 'best') { const x = rng(best); return x ? [x] : []; }
+    if (mapView === 'curbest') { const x = rng(best); return (x ? [{...x, faint: true}] : []).concat([{from: lc, to: Infinity}]); }
+    if (mapView.startsWith('lap')) { const x = rng(lapRows.find(r => r[0] === Number(mapView.slice(3)))); return x ? [x] : []; }
+    return [{from: -Infinity, to: Infinity}];
+  }
+  function drawPoint(p, faint) {
+    const prev = drawPrev, c = segColor(p);
+    const seg = prev && p.t - prev.t < 3000 ? L.polyline([[prev.lat, prev.lon], [p.lat, p.lon]], {color:c, weight: faint ? 3 : 5, opacity: faint ? .4 : .9, dashArray: faint ? '6 6' : null}).addTo(trackLayer) : null;
+    const dot = L.circleMarker([p.lat, p.lon], {radius: faint ? 2 : 3, weight:0, fillColor:c, fillOpacity: faint ? .4 : 1}).addTo(trackLayer)
+      .bindTooltip(`${p.spd.toFixed(1)} km/h · ${(p.g || 0).toFixed(2)} g`, {sticky:true});
+    drawn.push({p, seg, dot}); drawPrev = p;
+    if (faint) return;
+    if (p.dist != null && p.dist - lastLbl >= 25) {
+      lastLbl = p.dist;
+      L.marker([p.lat, p.lon], {interactive:false, icon:L.divIcon({className:'', iconSize:null, html:`<div class="spdlbl" style="background:${c}">${p.spd.toFixed(0)}</div>`})}).addTo(trackLayer);
+    }
+    if (!maxPl || p.spd > maxPl.spd) {
+      maxPl = p;
+      const ic = L.divIcon({className:'', iconSize:null, html:`<div class="spdlbl max">สูงสุด ${p.spd.toFixed(1)}</div>`});
+      if (maxMk) maxMk.setLatLng([p.lat, p.lon]).setIcon(ic); else maxMk = L.marker([p.lat, p.lon], {icon:ic, zIndexOffset:1000, interactive:false}).addTo(map);
+    }
+  }
+  function renderMap(fit) {
+    if (!pts.some(p => p.lat !== undefined)) return;
     ensureMap();
-    trackLayer.clearLayers(); segs = [];
-    for (let i = 1; i < geo.length; i++) addSeg(geo[i-1], geo[i]);
-    const l = geo[geo.length-1];
-    car.setLatLng([l.lat, l.lon]).addTo(map);
-    map.fitBounds(L.latLngBounds(geo.map(p => [p.lat, p.lon])).pad(0.2));
+    trackLayer.clearLayers(); drawn = []; lastLbl = -1e9; maxPl = null;
+    if (maxMk) { maxMk.remove(); maxMk = null; }
+    const sets = viewSets(), shown = [];
+    sets.forEach(r => { drawPrev = null; pts.forEach(p => { if (p.lat !== undefined && p.t >= r.from && p.t <= r.to) { drawPoint(p, r.faint); shown.push([p.lat, p.lon]); } }); });
+    drawBrakes();
+    if (fit && shown.length > 1) map.fitBounds(L.latLngBounds(shown).pad(0.15));
   }
-
+  function addPositioned(p) {                 // a newly smoothed point arrived live
+    ensureMap();
+    const sets = viewSets(), live = sets[sets.length - 1];
+    if (live && p.t >= live.from && p.t <= live.to) drawPoint(p, !!live.faint);
+    if (mapColor === 'spd' && drawn.length % 20 === 0) recolor();
+  }
+  function drawBrakes() {
+    if (!brkLayer) return;
+    brkLayer.clearLayers();
+    if (!$('brkShow').checked) return;
+    let pick;
+    if (mapView === 'all') {
+      const last = lapRows[lapRows.length - 1], from = last && last[6] != null ? last[6] : -Infinity;
+      const cur = lap && lap.lc != null ? lap.lc : (last && last[7] != null ? last[7] : -Infinity);
+      pick = z => z.t >= from ? {old: z.t < cur} : null;
+    } else { const sets = viewSets(); pick = z => { const r = sets.find(r => z.t >= r.from && z.t <= r.to); return r ? {old: !!r.faint} : null; }; }
+    brkRows.forEach(z => {
+      const k = pick(z); if (!k) return;
+      L.marker([z.lat, z.lon], {zIndexOffset: k.old ? 700 : 800, icon: L.divIcon({className:'', iconSize:null,
+        html:`<div class="brk ${k.old ? 'old' : ''}">เบรก ${z.v0.toFixed(0)}→${z.v1.toFixed(0)}</div>`})})
+        .bindPopup(`<b>จุดเริ่มเบรก</b><br>ความเร็วเข้า ${z.v0.toFixed(1)} km/h<br>ลดเหลือ ${z.v1.toFixed(1)} km/h<br>แรงเบรกสูงสุด ${z.peak.toFixed(2)} g<br>ระยะเบรก ${z.m.toFixed(1)} m · ${(z.ms / 1000).toFixed(2)} s`)
+        .addTo(brkLayer);
+    });
+  }
+  const rowToZ = r => ({t:r[0], lat:r[1], lon:r[2], v0:r[3], v1:r[4], peak:r[5], ms:r[6], m:r[7]});
+  function mapViewOptions() {
+    const W = lap && lap.mode === 'rally' ? 'รัน' : 'รอบ';
+    const opts = [['all', `ทุก${W}`], ['cur', `${W}ปัจจุบัน`]];
+    if (lapRows.some(r => r[6] != null)) {
+      opts.push(['curbest', `${W}ปัจจุบัน + ${W}ดีที่สุด (เส้นประ)`], ['best', `${W}ดีที่สุด`]);
+      const best = Math.min(...lapRows.map(r => r[1]));
+      lapRows.filter(r => r[6] != null).forEach(r => opts.push([`lap${r[0]}`, `${W}ที่ ${r[0]} · ${fmtLap(r[1])}${r[1] === best ? ' ★' : ''}`]));
+    }
+    if (!opts.some(o => o[0] === mapView)) mapView = 'all';
+    const html = opts.map(([v, t]) => `<option value="${v}" ${v === mapView ? 'selected' : ''}>${t}</option>`).join('');
+    if ($('mapView').innerHTML !== html) $('mapView').innerHTML = html;
+  }
+  // keep points sorted by time; merge a point that arrives twice (live sample, then its smoothed position)
+  function upsert(p) {
+    let i = pts.length - 1;
+    while (i >= 0 && pts[i].t > p.t) i--;
+    if (i >= 0 && pts[i].t === p.t) { const had = pts[i].lat !== undefined; Object.assign(pts[i], p); return {p: pts[i], fresh: !had && p.lat !== undefined}; }
+    pts.splice(i + 1, 0, p);
+    return {p, fresh: p.lat !== undefined};
+  }
 
   // ---- laps (sent by the tracker) ----
   let lap = null, lapRecv = 0, secRecv = 0, ptLayer = null, lapRows = [], lastN = 0, startMk = null, startCirc = null;
@@ -270,8 +366,7 @@ function start(room) {
     if (!l) return;
     lap = l; lapRecv = Date.now();
     $('lapBox').hidden = !(l.start || l.n);
-    const prevMode = l.ref === 'prev';
-    $('dLbl').textContent = prevMode ? 'ต่างจากรอบที่แล้ว' : 'ต่างจากรอบดีที่สุด';
+    const prevMode = refNow() === 'prev';
 
     const W = l.mode === 'rally' ? 'รัน' : 'รอบ';
     $('lapNo').textContent = l.el == null ? (l.mode === 'rally' ? 'รอออกสตาร์ท' : 'รอผ่านจุดสตาร์ท') : `${W}ที่ ${l.n + 1}`;
@@ -287,31 +382,32 @@ function start(room) {
       if (l.el != null && k === (l.secs || []).length) return `<span class="chip now"><em>S${k+1}</em> <span data-live-sec>…</span></span>`;
       return `<span class="chip"><em>S${k+1}</em> -</span>`;
     }).join('');
-    $('lapD').textContent = fmtD(l.d); tone($('lapD'), l.d);
     $('lapLast').textContent = fmtLap(l.last);
-    const ld = l.last == null ? null : prevMode ? (l.prev == null ? null : l.last - l.prev) : (l.best === l.last ? null : l.last - l.best);
-    $('lapLastD').textContent = ld == null ? '' : fmtD(ld); tone($('lapLastD'), ld);
     $('lapBest').textContent = fmtLap(l.best);
     $('lapBestN').textContent = l.bestN ? `รอบที่ ${l.bestN}` : '';
     if (l.n > lastN && lastN) { $('lapBox').classList.remove('flash'); void $('lapBox').offsetWidth; $('lapBox').classList.add('flash'); }
     if (l.n > lapRows.length) {   // a lap finished since the last snapshot: add it from the live data
-      lapRows.push([l.n, l.last, null, null, null]);
+      lapRows.push([l.n, l.last, null, null, null, null, l.lt0 ?? null, l.lt1 ?? null]);
+      if (mapView !== 'all') renderMap(false);
       drawLapTable();
     }
     lastN = l.n;
-    drawLapTable();
+    drawLapTable(); refUi(); mapViewOptions();
     if (Array.isArray(l.pts) && l.pts.length) drawPts(l.pts); else if (l.start) drawStart(l.start);
   }
   function drawLapTable() {
     const tb = $('lapTable'); tb.hidden = !lapRows.length;
-    const best = lapRows.length ? Math.min(...lapRows.map(r => r[1])) : null, prevMode = lap && lap.ref === 'prev';
+    const best = lapRows.length ? Math.min(...lapRows.map(r => r[1])) : null, prevMode = refNow() === 'prev';
+    const W = lap && lap.mode === 'rally' ? 'รัน' : 'รอบ', ns0 = (lap && lap.nSec) || 0;
+    $('lapHead').innerHTML = `<th>${W}</th><th>เวลา</th><th>${prevMode ? `ต่างจาก${W}ก่อน` : 'ต่างจากดีสุด'}</th>` +
+      Array.from({length:ns0}, (_, k) => `<th>S${k+1}</th>`).join('') + '<th>สูงสุด</th><th>เฉลี่ย</th><th>W สูงสุด</th>';
     tb.tBodies[0].innerHTML = lapRows.slice().reverse().map(r => {
       const d = prevMode ? (r[0] > 1 ? r[1] - lapRows[r[0]-2][1] : null) : (r[1] === best ? null : r[1] - best);
       const cell = d == null ? (r[1] === best && !prevMode ? 'ดีที่สุด' : '-') : fmtD(d);
       const ns = (lap && lap.nSec) || 0, bs = (lap && lap.bestSecs) || [];
       const sc = Array.from({length:ns}, (_, k) => { const v = r[4] ? r[4][k] : null;
         return `<td class="${v != null && v === bs[k] ? 'purple' : ''}">${v == null ? '–' : fmtLap(v)}</td>`; }).join('');
-      return `<tr class="${r[1] === best ? 'best' : ''}"><td>${r[0]}</td><td>${fmtLap(r[1])}</td>` +
+      return `<tr class="${r[1] === best ? 'best' : ''} ${mapView === 'lap' + r[0] ? 'shown' : ''}" data-lap="${r[0]}" style="cursor:pointer"><td>${r[0]}${r[6] != null ? ' 🗺' : ''}</td><td>${fmtLap(r[1])}</td>` +
              `<td class="${d == null ? '' : d < 0 ? 'neg' : 'pos'}">${cell}</td>${sc}` +
              `<td>${r[2] == null ? '' : r[2].toFixed(1)}</td><td>${r[3] == null ? '' : r[3].toFixed(1)}</td><td>${r[5] == null ? '' : r[5]}</td></tr>`;
     }).join('');
@@ -339,10 +435,50 @@ function start(room) {
     if (!lap || lap.el == null) { $('lapCur').textContent = '--:--.-'; return; }
     const live = $('live').classList.contains('on');
     $('lapCur').textContent = fmtLap(lap.el + (live ? Date.now() - lapRecv : 0));
+    let dv = liveDeltaV(); if (dv == null && refNow() === lap.ref) dv = lap.d;
+    $('lapD').textContent = fmtD(dv); tone($('lapD'), dv);
     const ls = document.querySelector('[data-live-sec]');
     if (ls && lap.secEl != null) ls.textContent = fmtLap(lap.secEl + (live ? Date.now() - secRecv : 0));
   }, 100);
 
+
+
+  // ---- comparison chosen by the viewer (best lap / previous lap) ----
+  let vRef = null;
+  try { const v = localStorage.getItem('gsm020vref'); if (v === 'best' || v === 'prev') vRef = v; } catch (e) {}
+  const refNow = () => vRef || (lap && lap.ref) || 'best';
+  function refRow() {
+    if (!lapRows.length) return null;
+    return refNow() === 'prev' ? lapRows[lapRows.length - 1] : lapRows.reduce((x, r) => r[1] < x[1] ? r : x);
+  }
+  function distAt(t) { const p = pts.find(q => q.t >= t && q.dist != null); return p ? p.dist : null; }
+  function liveDeltaV() {
+    const r = refRow(), last = pts[pts.length - 1];
+    if (!r || r[6] == null || !lap || lap.lc == null || !last || last.dist == null) return null;
+    const d0 = distAt(r[6]), c0 = distAt(lap.lc);
+    if (d0 == null || c0 == null) return null;
+    const x = last.dist - c0, prof = pts.filter(q => q.t >= r[6] && q.t <= r[7] && q.dist != null);
+    for (let i = 1; i < prof.length; i++) {
+      const a = prof[i - 1], b = prof[i];
+      if (b.dist - d0 >= x) {
+        const f = b.dist > a.dist ? (x - (a.dist - d0)) / (b.dist - a.dist) : 1;
+        return (last.t - lap.lc) - ((a.t - r[6]) + (b.t - a.t) * Math.max(0, Math.min(1, f)));
+      }
+    }
+    return null;
+  }
+  function refUi() {
+    document.querySelectorAll('[data-vref]').forEach(b => b.classList.toggle('sel', b.dataset.vref === refNow()));
+    const W = lap && lap.mode === 'rally' ? 'รัน' : 'รอบ', prev = refNow() === 'prev';
+    $('dLbl').textContent = prev ? `ต่างจาก${W}ที่แล้ว` : `ต่างจาก${W}ดีที่สุด`;
+    const lr = lapRows[lapRows.length - 1], best = lapRows.length ? Math.min(...lapRows.map(r => r[1])) : null;
+    const ld = !lr ? null : prev ? (lapRows.length > 1 ? lr[1] - lapRows[lapRows.length - 2][1] : null) : (lr[1] === best ? null : lr[1] - best);
+    $('lapLastD').textContent = ld == null ? '' : fmtD(ld); tone($('lapLastD'), ld);
+  }
+  document.querySelectorAll('[data-vref]').forEach(b => b.onclick = () => {
+    vRef = b.dataset.vref; try { localStorage.setItem('gsm020vref', vRef); } catch (e) {}
+    refUi(); drawLapTable();
+  });
 
   // ---- acceleration test (sent by the tracker) ----
   let ac = null, acRecv = 0, acLastN = 0;
@@ -424,33 +560,48 @@ function start(room) {
 
   // ---- data ----
   function setTrack(d) {
-    pts = (d.pts || []).map(r => r.length >= 4 ? {t:r[0], spd:r[1], lat:r[2], lon:r[3]} : {t:r[0], spd:r[1]});
+    let snap;
+    if (d.fmt === 2) {
+      snap = (d.pts || []).map(r => { const p = {t:r[0], spd:r[1], g:r[4], dist:r[5]}; if (r[2] != null) { p.lat = r[2]; p.lon = r[3]; } return p; });
+      brkRows = (d.brk || []).map(rowToZ);
+    } else {
+      snap = (d.pts || []).map(r => r.length >= 4 ? {t:r[0], spd:r[1], lat:r[2], lon:r[3]} : {t:r[0], spd:r[1]});
+    }
+    const lastT = snap.length ? snap[snap.length - 1].t : -Infinity;
+    pts = snap.concat(pts.filter(p => p.t > lastT));     // keep live samples newer than the snapshot
     maxSpd = Math.max(d.max || 0, ...pts.map(p => p.spd), 0);
     $('max').textContent = maxSpd.toFixed(1);
     $('dist').textContent = (d.dist ?? 0).toLocaleString();
     $('lg').textContent = maxSpd.toFixed(0);
-    redrawMap(); schedule();
+    if (Array.isArray(d.laps)) lapRows = d.laps.slice();
     if (d.lap) setLap(d.lap);
     if (d.ac) setAcc(d.ac);
-    if (Array.isArray(d.laps)) { lapRows = d.laps.slice(); drawLapTable(); }
+    mapViewOptions(); drawLapTable(); refUi();
+    renderMap(wantFit); if (pts.some(p => p.lat !== undefined)) wantFit = false;
+    const g = [...pts].reverse().find(p => p.lat !== undefined);
+    if (g && map) car.setLatLng([g.lat, g.lon]).addTo(map);
+    schedule();
   }
 
   function onLive(d) {
     if (d.end) { setLive(false, 'ผู้ส่งหยุดแชร์แล้ว'); return; }
     lastMsg = Date.now(); setLive(true, '');
-    const p = {t:d.t || Date.now(), spd:d.spd};
-    if (typeof d.lat === 'number') { p.lat = d.lat; p.lon = d.lon; }
     const rescale = d.spd > maxSpd * 1.1;
     maxSpd = Math.max(maxSpd, d.max || 0, d.spd);
-    if (p.lat !== undefined) {
+    if (d.tt != null) upsert({t:d.tt, spd:d.spd, g:d.acc, dist:d.dd});
+    else pts.push({t:d.t || Date.now(), spd:d.spd});
+    if (d.lap) setLap(d.lap);
+    if (Array.isArray(d.np)) d.np.forEach(r => {          // smoothed points from the sender (same as its map)
+      const u = upsert({t:r[0], spd:r[1], g:r[4], dist:r[5], ...(r[2] != null ? {lat:r[2], lon:r[3]} : {})});
+      if (u.fresh) addPositioned(u.p);
+    });
+    if (Array.isArray(d.bz) && d.bz.length) { d.bz.forEach(r => brkRows.push(rowToZ(r))); drawBrakes(); }
+    if (typeof d.lat === 'number') {                      // car marker = sender's latest GPS position
       ensureMap();
-      const prevGeo = [...pts].reverse().find(q => q.lat !== undefined);
-      if (prevGeo && p.t - prevGeo.t < 5000) addSeg(prevGeo, p);
-      car.setLatLng([p.lat, p.lon]).addTo(map);
-      if (follow) map.setView([p.lat, p.lon], Math.max(map.getZoom(), 17), {animate:false});
-      if (rescale) recolor();
+      car.setLatLng([d.lat, d.lon]).addTo(map);
+      if (follow) map.setView([d.lat, d.lon], Math.max(map.getZoom(), 17), {animate:false});
     }
-    pts.push(p);
+    if (rescale && mapColor === 'spd') recolor();
     $('spd').textContent = d.spd.toFixed(1);
     $('max').textContent = maxSpd.toFixed(1);
     $('avg').textContent = (d.avg ?? 0).toFixed(1);
@@ -459,10 +610,26 @@ function start(room) {
     if (d.pw != null) { $('pw').textContent = d.pw; $('pmax').textContent = d.pmax ?? 0; hudPw = d.pw; }
     if (d.acc != null) hudG = d.acc;
     $('lg').textContent = maxSpd.toFixed(0);
-    if (d.lap) setLap(d.lap);
     if (d.ac) setAcc(d.ac);
+    if (pts.length > 20000) pts.splice(0, pts.length - 20000);
     schedule();
   }
+
+  // ---- map controls ----
+  document.querySelectorAll('[data-mapc]').forEach(b => b.onclick = () => {
+    mapColor = b.dataset.mapc;
+    document.querySelectorAll('[data-mapc]').forEach(x => x.classList.toggle('sel', x === b));
+    $('lgSpd').hidden = mapColor !== 'spd'; $('lgAcc').hidden = mapColor !== 'acc';
+    recolor();
+  });
+  $('mapView').onchange = () => { mapView = $('mapView').value; follow = mapView === 'all' || mapView === 'cur' || mapView === 'curbest'; renderMap(!follow); drawLapTable(); locUi(); };
+  $('brkShow').onchange = drawBrakes;
+  $('lapTable').tBodies[0].onclick = e => {
+    const tr = e.target.closest && e.target.closest('tr[data-lap]'); if (!tr) return;
+    mapView = 'lap' + tr.dataset.lap; mapViewOptions(); follow = false; locUi(); renderMap(true); drawLapTable();
+    $('map').scrollIntoView({behavior:'smooth', block:'center'});
+  };
+  mapViewOptions();
 
   function setLive(on, m) {
     $('live').className = 'live' + (on ? ' on' : '');
@@ -483,7 +650,7 @@ function start(room) {
     if (topic.endsWith('/track')) {
       if (!txt) { setTrack({pts:[]}); return; }
       let d; try { d = JSON.parse(txt); } catch (e) { return; }
-      if (Array.isArray(d.pts) && d.pts.length >= pts.length) setTrack(d);
+      if (Array.isArray(d.pts)) setTrack(d);
       return;
     }
     let d; try { d = JSON.parse(txt); } catch (e) { return; }

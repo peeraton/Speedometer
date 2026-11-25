@@ -123,7 +123,7 @@
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-16</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-17</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -570,6 +570,7 @@ function renderTrack(fit) {
 }
 function addMapPoint(s) {
   if (s.lat === undefined) return;
+  if (typeof liveOn !== 'undefined' && liveOn) { placedQ.push(s); if (placedQ.length > 2000) placedQ.splice(0, placedQ.length - 2000); }
   const sets = viewSets(), live = sets[sets.length - 1];
   if (live && s.t >= live.from && s.t <= live.to) drawPoint(s, !!live.faint);
   lapFeed(s);
@@ -1633,7 +1634,8 @@ function lapState() {
            best: best ? best.ms : null, bestN: best ? best.n : null, d: liveDelta(),
            start: tPts.length ? {lat:tPts[0].lat, lon:tPts[0].lon, r:tPts[0].r} : null,
            mode: tMode, pts: tPts.map((p, i) => ({lat:p.lat, lon:p.lon, r:p.r, label:ptLabel(i).replace('|', '→')})),
-           secs: curSecs.slice(), secEl: secStart ? Date.now() - secStart.t : null, nSec: nSectors(), bestSecs: bestSecs() };
+           secs: curSecs.slice(), secEl: secStart ? Date.now() - secStart.t : null, nSec: nSectors(), bestSecs: bestSecs(),
+           lc: lastCross ? lastCross.t : null, lt0: last ? last.t0 : null, lt1: last ? last.t1 : null };
 }
 // snapshot of the acceleration test for the live viewer
 function accSnap() {
@@ -1649,16 +1651,19 @@ function accSnap() {
     runs: accRuns.slice(-30).map(r => { const k = accKey(r); return [r.n, k ? Math.round(k.ms) : null, k ? r1(accMode === 'dist' ? k.v : k.d, 1) : null, r1(r.max, 1)]; }) };
 }
 
+// track row (v2): [t, speed, lat|null, lon|null, longitudinal g, distance m]
+const trow = x => [x.t, r1(x.spd,1), x.lat === undefined ? null : r1(x.lat,6), x.lon === undefined ? null : r1(x.lon,6), r1(x.acc / G, 2), r1(x.dist, 1)];
+const brow = z => [z.t, r1(z.lat,6), r1(z.lon,6), r1(z.v0,1), r1(z.v1,1), r1(z.peak,2), Math.round(z.ms), r1(z.m,1)];
+let placedQ = [], pubBz = 0;
 function publishTrack() {
   lastPubTrack = Date.now();
-  const step = Math.max(1, Math.ceil(samples.length / 1500));
+  const step = Math.max(1, Math.ceil(samples.length / 3000));
   const rows = [];
-  for (let i = 0; i < samples.length; i += step) {
-    const x = samples[i];
-    rows.push(x.lat !== undefined ? [x.t, r1(x.spd,1), r1(x.lat,6), r1(x.lon,6)] : [x.t, r1(x.spd,1)]);
-  }
-  pub('track', {max:r1(maxSpd,1), dist:Math.round(distM), pts:rows,
-                laps: laps.map(l => [l.n, l.ms, r1(l.max,1), r1(l.avg,1), l.secs, Math.round(l.maxPw || 0)]), lap: lapState(), ac: accSnap()}, true);
+  for (let i = 0; i < samples.length; i += step) rows.push(trow(samples[i]));
+  if (samples.length && (samples.length - 1) % step) rows.push(trow(samples[samples.length - 1]));
+  pub('track', {fmt:2, max:r1(maxSpd,1), dist:Math.round(distM), pts:rows, brk: brkZones.map(brow),
+                laps: laps.map(l => [l.n, l.ms, r1(l.max,1), r1(l.avg,1), l.secs, Math.round(l.maxPw || 0), l.t0, l.t1]), lap: lapState(), ac: accSnap()}, true);
+  pubBz = brkZones.length;
 }
 function liveTick() {
   if (!liveOn || !mq || !mq.connected) return;
@@ -1670,7 +1675,11 @@ function liveTick() {
                   avg: samples.length ? r1(samples.reduce((a,x)=>a+x.spd,0)/samples.length,1) : 0,
                   dist: Math.round(distM), sats: Number($('sSats').textContent) || 0,
                   pw: s ? Math.round(s.pw || 0) : 0, pmax: Math.round(maxPw),
-                  ...(g ? {lat: r1(g.lat,7), lon: r1(g.lon,7)} : {}), lap: lapState(), ac: accSnap() });
+                  ...(g ? {lat: r1(g.lat,7), lon: r1(g.lon,7)} : {}), lap: lapState(), ac: accSnap(),
+                  ...(s ? {tt: s.t, dd: r1(s.dist, 1)} : {}),
+                  np: placedQ.splice(0, 400).map(trow),
+                  bz: (pubBz = Math.min(pubBz, brkZones.length), brkZones.slice(pubBz).map(brow)) });
+    pubBz = brkZones.length;
   }
   if (now - lastPubTrack >= 5000) publishTrack();
 }

@@ -44,6 +44,20 @@
   td.purple{color:#b57cff;font-weight:700}
   .locbtn{width:44px;height:44px;font-size:22px;line-height:40px;text-align:center;background:#fff;color:#111;border:2px solid rgba(0,0,0,.25);border-radius:8px;cursor:pointer;padding:0}
   .locbtn.on{background:#3fa7ff;color:#fff}
+  .pill{font-size:14px;font-weight:700;padding:3px 10px;border-radius:20px;border:2px solid var(--line);color:var(--mut);white-space:nowrap}
+  .pill.ready{border-color:#2ecc71;color:#2ecc71} .pill.run{border-color:#3fa7ff;color:#3fa7ff} .pill.done{border-color:#2ecc71;background:#1d5e37;color:#fff}
+  #accBox .head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  #accBox .head b{flex:1;font-size:15px}
+  #accBox button{background:#181d24;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:14px;min-height:40px}
+  #accBox .chip.tgt{border-color:#3fa7ff}
+  #accBox.full{position:fixed;inset:0;z-index:5000;margin:0;border-radius:0;border:0;background:#05070a;display:flex;flex-direction:column;padding:max(12px,env(safe-area-inset-top)) 16px 16px;overflow:auto}
+  #accBox.full .mainrow{flex:1;flex-direction:column;justify-content:center;align-items:center;text-align:center}
+  #accBox.full .cur{font-size:clamp(64px,22vw,200px)}
+  #accBox.full .pill{font-size:clamp(18px,5vw,34px);padding:6px 18px}
+  #accBox.full .chips{justify-content:center}
+  #accBox.full .chip{font-size:clamp(16px,4.5vw,26px)}
+  #accBox.full .kv b{font-size:clamp(24px,7vw,48px)}
+  #accBox.done-flash .cur{color:#2ecc71}
   #status{padding:0 14px;font-size:12px;color:#f1c40f;min-height:16px}
   .sec{margin:8px 14px 4px;font-size:13px;color:var(--mut)}
   .fig{position:relative;height:200px;margin:0 14px;background:var(--card);border:1px solid var(--line);border-radius:12px}
@@ -88,6 +102,16 @@
     </div>
     <div class="chips" id="secNow"></div>
     <div style="overflow-x:auto"><table class="laps" id="lapTable" hidden><thead><tr id="lapHead"></tr></thead><tbody></tbody></table></div>
+  </div>
+  <div class="lap" id="accBox" hidden>
+    <div class="head"><b>จับเวลาอัตราเร่ง <span id="aLabel" style="color:var(--mut);font-weight:400"></span></b><span class="pill" id="aState">-</span><button id="aFull">⏱ เต็มจอ</button></div>
+    <div class="row mainrow" style="margin-top:8px">
+      <div><div class="kv" id="aMainLbl">เวลา</div><div class="cur" id="aMain">-.--</div></div>
+      <div class="kv"><span id="aTrapLbl">ความเร็วปลาย</span><b id="aTrap">-</b></div>
+      <div class="kv">ดีที่สุด<b id="aBest" class="neg">-</b></div>
+    </div>
+    <div class="chips" id="aSplits"></div>
+    <div style="overflow-x:auto"><table class="laps" id="aTable" hidden><thead><tr id="aHead"></tr></thead><tbody></tbody></table></div>
   </div>
   <div id="status"></div>
   <div class="sec">ความเร็วตามเวลา</div>
@@ -281,6 +305,56 @@ function start(room) {
     if (ls && lap.secEl != null) ls.textContent = fmtLap(lap.secEl + (live ? Date.now() - secRecv : 0));
   }, 100);
 
+
+  // ---- acceleration test (sent by the tracker) ----
+  let ac = null, acRecv = 0, acLastN = 0;
+  const fmtS = ms => ms == null ? '-' : (ms / 1000).toFixed(2) + ' s';
+  function setAcc(a) {
+    if (!a) return;
+    ac = a; acRecv = Date.now();
+    $('accBox').hidden = !(a.n > 0 || a.st === 'run' || $('accBox').classList.contains('full'));
+    $('aLabel').textContent = a.label;
+    const pill = $('aState');
+    pill.className = 'pill ' + (a.st === 'wait' ? '' : a.st);
+    pill.textContent = a.st === 'run' ? `${Math.round(a.v)} km/h · ${a.d.toFixed(1)} m` : a.st === 'ready' ? 'พร้อมออกตัว' : a.st === 'done' ? 'ได้ผลแล้ว' : 'รอรถหยุดนิ่ง';
+    $('aMainLbl').textContent = a.st === 'run' ? (a.hit != null ? `ถึง ${a.label} แล้ว` : 'กำลังวัด') : (a.n ? `ครั้งที่ ${a.n} · ${a.label}` : a.label);
+    const dist = a.mode === 'dist';
+    $('aTrapLbl').textContent = dist ? 'ความเร็วปลาย' : 'ระยะที่ใช้';
+    $('aTrap').textContent = a.trap == null ? '-' : dist ? `${a.trap.toFixed(1)} km/h` : `${a.trap.toFixed(1)} m`;
+    $('aBest').textContent = fmtS(a.best);
+    $('aSplits').innerHTML = (a.splits || []).map(([lbl, ms, tgt]) =>
+      `<span class="chip ${tgt ? 'tgt' : ''}"><em>${String(lbl).replace(/[<>&]/g, '')}</em> ${fmtS(ms)}</span>`).join('');
+    const tb = $('aTable'); const runs = a.runs || [];
+    tb.hidden = !runs.length;
+    $('aHead').innerHTML = `<th>ครั้ง</th><th>${a.label}</th><th>ต่างจากดีสุด</th><th>${dist ? 'ความเร็วปลาย' : 'ระยะที่ใช้'}</th><th>สูงสุด km/h</th>`;
+    tb.tBodies[0].innerHTML = runs.slice().reverse().map(([n, ms, x, mx]) => {
+      const d = ms != null && a.best != null ? ms - a.best : null;
+      return `<tr class="${ms != null && ms === a.best ? 'best' : ''}"><td>${n}</td><td>${ms == null ? 'ไม่ถึง' : fmtS(ms)}</td>` +
+             `<td class="${d >= 5 ? 'pos' : ''}">${ms == null ? '-' : d < 5 ? 'ดีที่สุด' : '+' + (d / 1000).toFixed(2) + ' s'}</td>` +
+             `<td>${x == null ? '-' : x.toFixed(1)}</td><td>${mx == null ? '' : mx.toFixed(1)}</td></tr>`;
+    }).join('');
+    if (a.n > acLastN && acLastN) { $('accBox').classList.add('done-flash'); setTimeout(() => $('accBox').classList.remove('done-flash'), 3000); }
+    acLastN = a.n;
+    drawAccTime();
+  }
+  function drawAccTime() {
+    if (!ac) return;
+    let ms;
+    if (ac.st === 'run' && ac.hit == null && ac.el != null) ms = ac.el + ($('live').classList.contains('on') ? Date.now() - acRecv : 0);
+    else ms = ac.hit;
+    $('aMain').textContent = ms == null ? '-.--' : fmtS(ms);
+    $('aMain').style.color = ac.st === 'run' && ac.hit != null ? '#2ecc71' : '';
+  }
+  setInterval(drawAccTime, 100);
+  $('aFull').onclick = async () => {
+    const box = $('accBox'), on = !box.classList.contains('full');
+    box.classList.toggle('full', on);
+    $('aFull').textContent = on ? '✕ ปิดเต็มจอ' : '⏱ เต็มจอ';
+    try { if (on) await document.documentElement.requestFullscreen(); else if (document.fullscreenElement) await document.exitFullscreen(); } catch (e) {}
+    try { if (on) acWake = await navigator.wakeLock.request('screen'); else if (acWake) { await acWake.release(); acWake = null; } } catch (e) {}
+  };
+  let acWake = null;
+
   // ---- data ----
   function setTrack(d) {
     pts = (d.pts || []).map(r => r.length >= 4 ? {t:r[0], spd:r[1], lat:r[2], lon:r[3]} : {t:r[0], spd:r[1]});
@@ -290,6 +364,7 @@ function start(room) {
     $('lg').textContent = maxSpd.toFixed(0);
     redrawMap(); schedule();
     if (d.lap) setLap(d.lap);
+    if (d.ac) setAcc(d.ac);
     if (Array.isArray(d.laps)) { lapRows = d.laps.slice(); drawLapTable(); }
   }
 
@@ -317,6 +392,7 @@ function start(room) {
     if (d.pw != null) { $('pw').textContent = d.pw; $('pmax').textContent = d.pmax ?? 0; }
     $('lg').textContent = maxSpd.toFixed(0);
     if (d.lap) setLap(d.lap);
+    if (d.ac) setAcc(d.ac);
     schedule();
   }
 

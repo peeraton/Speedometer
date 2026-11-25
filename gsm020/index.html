@@ -51,6 +51,7 @@
   table.laps th{font-weight:600;color:var(--mut);font-size:12px;text-align:right;padding:4px 6px;border-bottom:1px solid var(--line)}
   table.laps td{text-align:right;padding:5px 6px;border-bottom:1px solid var(--line)}
   table.laps th:first-child,table.laps td:first-child{text-align:left}
+  tr.shown td{background:#16324a}
   tr.best td{color:var(--ok);font-weight:700}
   .flash{animation:flash 1s ease-out}
   @keyframes flash{0%{background:#2ecc7155}100%{background:transparent}}
@@ -102,7 +103,7 @@
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-13</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-14</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -209,6 +210,7 @@
 
 <div class="sec" style="flex-wrap:wrap;gap:6px">
   <div class="seg" role="group" aria-label="สีเส้นทาง"><button data-mapc="spd" class="sel">สีตามความเร็ว</button><button data-mapc="acc">สีเร่ง/เบรก</button></div>
+  <select id="mapView" aria-label="แสดงบนแผนที่" style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px;font-size:13px;min-height:36px;max-width:100%"></select>
   <label class="kv" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="brkShow" checked style="width:20px;height:20px">จุดเบรก</label>
   <select id="brkG" aria-label="แรงเบรกขั้นต่ำ" style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px;font-size:13px;min-height:36px">
     <option value="0.1">เบรก ≥ 0.1 g</option><option value="0.2" selected>เบรก ≥ 0.2 g</option><option value="0.3">เบรก ≥ 0.3 g</option><option value="0.5">เบรก ≥ 0.5 g</option>
@@ -461,31 +463,78 @@ function accColor(acc) {
 }
 const segColor = x => mapColor === 'acc' ? accColor(x.acc) : color(x.spd);
 function recolorTrack() { drawn.forEach(d => { const k = segColor(d.s); d.seg && d.seg.setStyle({color:k}); d.dot.setStyle({fillColor:k}); }); }
-function addMapPoint(s) {
-  if (s.lat === undefined) return;
-  const prev = drawn.length ? drawn[drawn.length-1].s : null;
+// ---- which laps the map shows ----
+let mapView = 'all';
+function viewSets() {                       // [{from, to, faint}] time ranges to draw
+  const lastLap = laps.length ? laps[laps.length - 1] : null;
+  const curFrom = lastCross ? lastCross.t : (lastLap ? lastLap.t1 : -Infinity);
+  const best = laps.length ? laps.reduce((x, l) => l.ms < x.ms ? l : x) : null;
+  if (mapView === 'cur') return [{from: curFrom, to: Infinity}];
+  if (mapView === 'best') return best ? [{from: best.t0, to: best.t1}] : [];
+  if (mapView === 'curbest') return (best ? [{from: best.t0, to: best.t1, faint: true}] : []).concat([{from: curFrom, to: Infinity}]);
+  if (mapView.startsWith('lap')) { const l = laps[Number(mapView.slice(3)) - 1]; return l ? [{from: l.t0, to: l.t1}] : []; }
+  return [{from: -Infinity, to: Infinity}];
+}
+let drawPrev = null;                        // previous point drawn in the same stretch
+function drawPoint(s, faint) {
+  const prev = drawPrev;
   const c = segColor(s);
-  const seg = prev && s.t - prev.t < 3000 ? L.polyline([[prev.lat,prev.lon],[s.lat,s.lon]], {color:c, weight:5, opacity:.9}).addTo(trackLayer) : null;
-  const dot = L.circleMarker([s.lat,s.lon], {radius:3, weight:0, fillColor:c, fillOpacity:1}).addTo(trackLayer)
+  const seg = prev && s.t - prev.t < 3000 ? L.polyline([[prev.lat,prev.lon],[s.lat,s.lon]], {color:c, weight: faint ? 3 : 5, opacity: faint ? .4 : .9, dashArray: faint ? '6 6' : null}).addTo(trackLayer) : null;
+  const dot = L.circleMarker([s.lat,s.lon], {radius: faint ? 2 : 3, weight:0, fillColor:c, fillOpacity: faint ? .4 : 1}).addTo(trackLayer)
     .bindPopup(() => `<b>${s.spd.toFixed(1)} km/h</b><br>${new Date(s.t).toLocaleTimeString('th-TH')}<br>ความเร่ง ${(s.acc/G).toFixed(2)} g<br>ระยะ ${Math.round(s.dist)} m`);
   drawn.push({s, seg, dot});
+  drawPrev = s;
+  if (faint) return;
   // speed number every ~25 m along the route
   if (s.dist - lastLabelDist >= 25) {
     lastLabelDist = s.dist;
     L.marker([s.lat, s.lon], {interactive:false, icon:L.divIcon({className:'', iconSize:null,
       html:`<div class="spdlbl" style="background:${c}">${s.spd.toFixed(0)}</div>`})}).addTo(trackLayer);
   }
-  // top-speed marker
+  // top-speed marker (of what is shown)
   if (!maxPlaced || s.spd > maxPlaced.spd) {
     maxPlaced = s;
     const ic = L.divIcon({className:'', iconSize:null, html:`<div class="spdlbl max">สูงสุด ${s.spd.toFixed(1)}</div>`});
     if (maxMarker) maxMarker.setLatLng([s.lat, s.lon]).setIcon(ic);
     else maxMarker = L.marker([s.lat, s.lon], {icon:ic, zIndexOffset:1000, interactive:false}).addTo(map);
   }
+}
+function renderTrack(fit) {
+  trackLayer.clearLayers(); drawn = []; lastLabelDist = -1e9; maxPlaced = null;
+  if (maxMarker) { maxMarker.remove(); maxMarker = null; }
+  const sets = viewSets(), shown = [];
+  sets.forEach(r => {
+    drawPrev = null;
+    samples.forEach(x => { if (x.lat !== undefined && x.t >= r.from && x.t <= r.to) { drawPoint(x, r.faint); shown.push([x.lat, x.lon]); } });
+  });
+  drawPrev = null;
+  const live = sets[sets.length - 1];
+  if (live && live.to === Infinity) { const pts = drawn.filter(d => !d.s.faintGroup); drawPrev = pts.length ? pts[pts.length - 1].s : null; }
+  drawBrakes();
+  if (fit && shown.length > 1) { follow = false; map.fitBounds(L.latLngBounds(shown).pad(0.15)); }
+  mapInfo();
+}
+function addMapPoint(s) {
+  if (s.lat === undefined) return;
+  const sets = viewSets(), live = sets[sets.length - 1];
+  if (live && s.t >= live.from && s.t <= live.to) drawPoint(s, !!live.faint);
   lapFeed(s);
   brkFeed(s);
   if (drawn.length % 20 === 0 && mapColor === 'spd') recolorTrack();
 }
+function mapViewOptions() {
+  const sel = $('mapView'); if (!sel) return;
+  const W = runWord();
+  const opts = [['all', `ทุก${W}`], ['cur', `${W}ปัจจุบัน`]];
+  if (laps.length) {
+    opts.push(['curbest', `${W}ปัจจุบัน + ${W}ดีที่สุด (เส้นประ)`], ['best', `${W}ดีที่สุด`]);
+    const best = Math.min(...laps.map(l => l.ms));
+    laps.forEach(l => opts.push([`lap${l.n}`, `${W}ที่ ${l.n} · ${fmtLap(l.ms)}${l.ms === best ? ' ★' : ''}`]));
+  }
+  if (!opts.some(o => o[0] === mapView)) mapView = 'all';
+  sel.innerHTML = opts.map(([v, t]) => `<option value="${v}" ${v === mapView ? 'selected' : ''}>${t}</option>`).join('');
+}
+function setMapView(v, fit) { mapView = v; mapViewOptions(); renderTrack(fit); }
 let gpsErr = null;
 const GPS_MAX_ERR = 50;   // metres; worse fixes are shown but not used for the track
 function mapInfo() {
@@ -837,7 +886,7 @@ function finishRun(c) {
              maxPw: Math.max(0, ...seg.map(x => x.pw || 0)), t0: lastCross.t, t1: c.t,
              dist: c.dist - lastCross.dist});
   try { navigator.vibrate && navigator.vibrate(tMode === 'rally' ? [150, 80, 150] : 150); } catch (e) {}
-  setTimeout(drawBrakes, 0);
+  setTimeout(() => { if (mapView !== 'all') renderTrack(); else drawBrakes(); }, 0);
   $('lapBox').classList.remove('flash'); void $('lapBox').offsetWidth; $('lapBox').classList.add('flash');
   $('tv').classList.add('flash'); setTimeout(() => $('tv').classList.remove('flash'), 3000);
   return true;
@@ -914,7 +963,7 @@ function lapUi(note) {
       const v = l.secs ? l.secs[k] : null;
       return `<td class="${v != null && v === bs[k] ? 'purple' : ''}">${v == null ? '–' : fmtLap(v)}</td>`;
     }).join('');
-    return `<tr class="${l.ms === best ? 'best' : ''}"><td>${l.n}</td><td>${fmtLap(l.ms)}</td>` +
+    return `<tr class="${l.ms === best ? 'best' : ''} ${mapView === 'lap' + l.n ? 'shown' : ''}" data-lap="${l.n}" style="cursor:pointer"><td>${l.n} 🗺</td><td>${fmtLap(l.ms)}</td>` +
            `<td class="${cls}">${cell}</td>${sc}<td>${l.max.toFixed(1)}</td><td>${l.avg.toFixed(1)}</td><td>${Math.round(l.maxPw || 0)}</td></tr>`;
   }).join('');
   // points summary + guidance
@@ -938,6 +987,7 @@ function lapUi(note) {
     else if (!lastCross) info = tMode === 'rally' ? 'พร้อมแล้ว จะเริ่มจับเวลาเมื่อรถออกจากจุดสตาร์ท' : 'พร้อมแล้ว จะเริ่มจับเวลาเมื่อรถผ่านเส้นสตาร์ทครั้งแรก';
   }
   $('lapInfo').textContent = info;
+  mapViewOptions();
 }
 function addHere(asFinish) {
   if (!gps) { lapUi('ยังไม่มีตำแหน่งมือถือ: เปิด GPS มือถือแล้วรอสักครู่'); return; }
@@ -1181,11 +1231,19 @@ function brkFeed(s) {
 function drawBrakes() {
   brkLayer.clearLayers();
   if (!$('brkShow').checked) return;
-  // with lap timing running, show this lap's and the previous lap's brake points (older ones faded out)
-  const lastLap = laps.length ? laps[laps.length - 1] : null;
-  const from = lastLap ? lastLap.t0 : -Infinity, cur = lastCross ? lastCross.t : (lastLap ? lastLap.t1 : -Infinity);
-  brkZones.filter(z => z.t >= from).forEach(z => {
-    const old = z.t < cur;
+  // "all": this lap's and the previous lap's brake points (older faded); otherwise follow the map selection
+  let pick;
+  if (mapView === 'all') {
+    const lastLap = laps.length ? laps[laps.length - 1] : null;
+    const from = lastLap ? lastLap.t0 : -Infinity, cur = lastCross ? lastCross.t : (lastLap ? lastLap.t1 : -Infinity);
+    pick = z => z.t >= from ? {old: z.t < cur} : null;
+  } else {
+    const sets = viewSets();
+    pick = z => { const r = sets.find(r => z.t >= r.from && z.t <= r.to); return r ? {old: !!r.faint} : null; };
+  }
+  brkZones.forEach(z => {
+    const k = pick(z); if (!k) return;
+    const old = k.old;
     L.marker([z.lat, z.lon], {zIndexOffset: old ? 700 : 800, icon: L.divIcon({className:'', iconSize:null,
       html:`<div class="brk ${old ? 'old' : ''}">เบรก ${z.v0.toFixed(0)}→${z.v1.toFixed(0)}</div>`})})
       .bindPopup(`<b>จุดเริ่มเบรก</b><br>ความเร็วเข้า ${z.v0.toFixed(1)} km/h<br>ลดเหลือ ${z.v1.toFixed(1)} km/h<br>` +
@@ -1208,6 +1266,14 @@ document.querySelectorAll('[data-mapc]').forEach(b => b.onclick = () => {
   $('lgSpd').hidden = mapColor !== 'spd'; $('lgAcc').hidden = mapColor !== 'acc';
   recolorTrack();
 });
+
+$('mapView').onchange = () => setMapView($('mapView').value, true);
+$('lapTable').tBodies[0].onclick = e => {
+  const tr = e.target.closest && e.target.closest('tr[data-lap]'); if (!tr) return;
+  setMapView('lap' + tr.dataset.lap, true); lapUi();
+  $('map').scrollIntoView({behavior:'smooth', block:'center'});
+};
+mapViewOptions();
 
 // ---------- reference lap + deltas ----------
 let refMode = 'best';

@@ -58,6 +58,23 @@
   #accBox.full .chip{font-size:clamp(16px,4.5vw,26px)}
   #accBox.full .kv b{font-size:clamp(24px,7vw,48px)}
   #accBox.done-flash .cur{color:#2ecc71}
+  #mapBox{position:relative}
+  #mapBox.full{position:fixed;inset:0;z-index:4000;background:#000}
+  #mapBox.full #map{height:100%;margin:0;border-radius:0;border:0}
+  .hud{display:none;position:absolute;z-index:1100;pointer-events:none;color:#fff;font-variant-numeric:tabular-nums}
+  #mapBox.full .hud{display:block}
+  .hud .pane{background:rgba(5,7,10,.78);border:1px solid rgba(255,255,255,.15);border-radius:14px;padding:8px 12px;backdrop-filter:blur(3px)}
+  .hud-top{top:max(10px,env(safe-area-inset-top));left:64px;right:10px}
+  .hud-top .pane{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 16px}
+  .hud .big{font-size:clamp(34px,9vw,64px);font-weight:800;line-height:1}
+  .hud .mid{font-size:clamp(18px,5vw,30px);font-weight:800;line-height:1.1}
+  .hud .lbl{font-size:12px;color:#a9b4c0;display:block}
+  .hud .chips{margin-top:0}
+  .hud .chip{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#fff}
+  .hud-bot{bottom:max(14px,env(safe-area-inset-bottom));left:10px}
+  .hud-bot .pane{display:flex;gap:16px;align-items:flex-end}
+  .hud .neg{color:#2ecc71} .hud .pos{color:#ff6b6b}
+  .fullbtn{width:44px;height:44px;font-size:22px;line-height:40px;text-align:center;background:#fff;color:#111;border:2px solid rgba(0,0,0,.25);border-radius:8px;cursor:pointer;padding:0;min-height:0}
   #status{padding:0 14px;font-size:12px;color:#f1c40f;min-height:16px}
   .sec{margin:8px 14px 4px;font-size:13px;color:var(--mut)}
   .fig{position:relative;height:200px;margin:0 14px;background:var(--card);border:1px solid var(--line);border-radius:12px}
@@ -118,7 +135,22 @@
   <div class="fig"><canvas id="chart"></canvas></div>
   <div id="mapWrap">
     <div class="sec">แผนที่</div>
-    <div id="map"></div>
+<div id="mapBox">
+<div id="map"></div>
+<div class="hud hud-top"><div class="pane">
+  <div><span class="lbl" id="hLapNo">รอบปัจจุบัน</span><span class="big" id="hCur">--:--.-</span></div>
+  <div><span class="lbl" id="hDLbl">ต่างจากดีสุด</span><span class="mid" id="hD">-</span></div>
+  <div><span class="lbl">ล่าสุด</span><span class="mid" id="hLast">-</span></div>
+  <div><span class="lbl">ดีที่สุด</span><span class="mid neg" id="hBest">-</span></div>
+  <div class="chips" id="hSecs" style="flex-basis:100%"></div>
+</div></div>
+<div class="hud hud-bot"><div class="pane">
+  <div><span class="lbl">ความเร็ว km/h</span><span class="big" id="hSpd">0</span></div>
+  <div><span class="lbl">สูงสุด</span><span class="mid" id="hMax">0</span></div>
+  <div><span class="lbl">แรง G</span><span class="mid" id="hG">0.00</span></div>
+  <div><span class="lbl">กำลัง W</span><span class="mid" id="hPw" style="color:#b57cff">0</span></div>
+</div></div>
+</div>
   </div>
   <div class="legend"><span>ช้า</span><div class="grad"></div><span>เร็ว (<span id="lg">0</span> km/h)</span></div>
 </div>
@@ -203,6 +235,12 @@ function start(room) {
       L.DomEvent.on(b, 'click', () => { follow = true; locUi(); if (car && map.hasLayer(car)) map.setView(car.getLatLng(), Math.max(map.getZoom(), 17)); });
       return b; } });
     new Ctl().addTo(map);
+    const FullCtl = L.Control.extend({ options:{position:'topleft'}, onAdd() {
+      const b = L.DomUtil.create('button', 'fullbtn');
+      b.id = 'btnMapFull'; b.type = 'button'; b.title = 'ขยายแผนที่เต็มจอ'; b.setAttribute('aria-label', 'ขยายแผนที่เต็มจอ'); b.textContent = '⛶';
+      L.DomEvent.disableClickPropagation(b); L.DomEvent.on(b, 'click', toggleMapFull);
+      return b; } });
+    new FullCtl().addTo(map);
   }
   function locUi() { const b = document.getElementById('btnLoc'); if (b) b.classList.toggle('on', follow); }
   function addSeg(a, b) {
@@ -355,6 +393,35 @@ function start(room) {
   };
   let acWake = null;
 
+
+  // ---- full-screen map with overlay ----
+  let mapFullWake = null;
+  async function toggleMapFull() {
+    const w = $('mapBox'), on = !w.classList.contains('full');
+    w.classList.toggle('full', on);
+    const b = document.getElementById('btnMapFull'); if (b) b.textContent = on ? '✕' : '⛶';
+    try { if (on) await w.requestFullscreen(); else if (document.fullscreenElement) await document.exitFullscreen(); } catch (e) {}
+    try { if (on) mapFullWake = await navigator.wakeLock.request('screen'); else if (mapFullWake) { await mapFullWake.release(); mapFullWake = null; } } catch (e) {}
+    setTimeout(() => { if (map) map.invalidateSize(); hudTick(); }, 120);
+  }
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && $('mapBox').classList.contains('full')) toggleMapFull(); });
+  let hudPw = 0, hudG = 0;
+  function hudTick() {
+    if (!$('mapBox').classList.contains('full')) return;
+    $('hLapNo').textContent = $('lapNo').textContent;
+    $('hCur').textContent = $('lapCur').textContent;
+    $('hDLbl').textContent = $('dLbl').textContent;
+    $('hD').textContent = $('lapD').textContent; $('hD').className = 'mid ' + ($('lapD').classList.contains('neg') ? 'neg' : $('lapD').classList.contains('pos') ? 'pos' : '');
+    $('hLast').textContent = $('lapLast').textContent;
+    $('hBest').textContent = $('lapBest').textContent;
+    $('hSecs').innerHTML = $('secNow').innerHTML; $('hSecs').style.display = $('secNow').innerHTML ? '' : 'none';
+    $('hSpd').textContent = Math.round(parseFloat($('spd').textContent) || 0);
+    $('hMax').textContent = Math.round(maxSpd);
+    $('hG').textContent = (+hudG).toFixed(2); $('hG').className = 'mid ' + (hudG < -0.05 ? 'pos' : hudG > 0.05 ? 'neg' : '');
+    $('hPw').textContent = hudPw;
+  }
+  setInterval(hudTick, 100);
+
   // ---- data ----
   function setTrack(d) {
     pts = (d.pts || []).map(r => r.length >= 4 ? {t:r[0], spd:r[1], lat:r[2], lon:r[3]} : {t:r[0], spd:r[1]});
@@ -389,7 +456,8 @@ function start(room) {
     $('avg').textContent = (d.avg ?? 0).toFixed(1);
     $('acc').textContent = (d.acc ?? 0).toFixed(2);
     $('dist').textContent = (d.dist ?? 0).toLocaleString();
-    if (d.pw != null) { $('pw').textContent = d.pw; $('pmax').textContent = d.pmax ?? 0; }
+    if (d.pw != null) { $('pw').textContent = d.pw; $('pmax').textContent = d.pmax ?? 0; hudPw = d.pw; }
+    if (d.acc != null) hudG = d.acc;
     $('lg').textContent = maxSpd.toFixed(0);
     if (d.lap) setLap(d.lap);
     if (d.ac) setAcc(d.ac);

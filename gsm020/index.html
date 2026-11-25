@@ -141,7 +141,7 @@
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-23</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-24</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -223,6 +223,12 @@
   </div>
   <div class="kv" id="accStatus" style="margin-top:6px;font-size:13px"></div>
   <div class="chips" id="accSplits"></div>
+  <div class="btns" style="align-items:center">
+    <div class="seg" role="group" aria-label="แกนตั้ง"><button data-accy="v">ความเร็ว</button><button data-accy="g">แรง G</button></div>
+    <span class="kv">เทียบกับ</span>
+    <div class="seg" role="group" aria-label="แกนนอน"><button data-accx="t">เวลา</button><button data-accx="d">ระยะทาง</button></div>
+  </div>
+  <div class="fig" style="height:210px;margin:6px 0 0"><canvas id="accChart"></canvas></div>
   <div style="overflow-x:auto"><table class="laps" id="accTable" hidden><thead><tr id="accHead"></tr></thead><tbody></tbody></table></div>
 </div>
 
@@ -1326,7 +1332,7 @@ function accFeed(s) {
       let t0 = slope > 0 ? readyS.t - vr / slope : readyS.t;
       if (prevStill) t0 = Math.max(prevStill.t, t0);
       const d0 = Math.max(0, readyS.dist - (readyS.spd / 3.6) * (readyS.t - t0) / 2000);
-      accRun = {t0, d0, prev: {t: t0, v: 0, d: 0}, dist: {}, spd: {}, max: 0};
+      accRun = {t0, d0, prev: {t: t0, v: 0, d: 0}, dist: {}, spd: {}, max: 0, trace: [[0, 0, 0, 0]]};
       accState = 'run';
     } else if (accState !== 'ready') stillSince = null;
     if (accState !== 'run') { accUi(); return; }
@@ -1344,6 +1350,7 @@ function accFeed(s) {
     r.spd[x] = {ms: p.t + (s.t - p.t) * f - r.t0, d: p.d + (d - p.d) * f};
   });
   r.prev = {t: s.t, v: s.spd, d};
+  r.trace.push([Math.round(el), Math.round(d * 10) / 10, Math.round(s.spd * 10) / 10, Math.round(s.acc / G * 100) / 100]);
   r.max = Math.max(r.max, s.spd);
   r.el = el; r.d = d; r.v = s.spd;
   const allDone = dTargets().every(x => r.dist[x]) && vTargets().every(x => r.spd[x]);
@@ -1355,7 +1362,8 @@ function accFinish() {
   const r = accRun;
   accState = 'wait'; stillSince = null; accRun = null;
   if (!Object.keys(r.dist).length && !Object.keys(r.spd).length) { accLastMsg = 'ยังไม่ถึงเป้าหมายแรก ไม่นับครั้งนี้'; return; }
-  accRuns.push({n: accRuns.length + 1, dist: r.dist, spd: r.spd, max: r.max});
+  accRuns.push({n: accRuns.length + 1, dist: r.dist, spd: r.spd, max: r.max, trace: r.trace});
+  accSel = null;
   const k = accMode === 'dist' ? r.dist[accT.dist] : r.spd[accT.spd];
   accLastMsg = k ? `ได้ผลแล้ว ${accLabel()} ${fmtS(k.ms)} · หยุดรถให้นิ่งเพื่อวัดครั้งต่อไป` : `ครั้งนี้ไปไม่ถึง ${accLabel()} · หยุดรถให้นิ่งเพื่อวัดครั้งต่อไป`;
   try { navigator.vibrate && navigator.vibrate([100, 60, 100]); } catch (e) {}
@@ -1402,11 +1410,13 @@ function accUi() {
   tb.tBodies[0].innerHTML = accRuns.slice().reverse().map(r => {
     const k = accKey(r);
     const d = k && best != null ? k.ms - best : null;
-    return `<tr class="${k && k.ms === best ? 'best' : ''}"><td>${r.n}</td><td>${k ? fmtS(k.ms) : 'ไม่ถึง'}</td>` +
+    const shown = (accSel || (accRuns[accRuns.length - 1] || {}).n) === r.n;
+    return `<tr class="${k && k.ms === best ? 'best' : ''} ${shown ? 'shown' : ''}" data-run="${r.n}" style="cursor:pointer"><td>${r.n} 📈</td><td>${k ? fmtS(k.ms) : 'ไม่ถึง'}</td>` +
            `<td class="${d >= 5 ? 'pos' : ''}">${k ? (k.ms === best ? 'ดีที่สุด' : '+' + (d / 1000).toFixed(2) + ' s') : '-'}</td>` +
            `<td>${!k ? '-' : accMode === 'dist' ? k.v.toFixed(1) : k.d.toFixed(1) + ' m'}</td><td>${r.max.toFixed(1)}</td></tr>`;
   }).join('');
   atvUi();
+  if (typeof accChartSoon === 'function') accChartSoon();
 }
 function atvUi() {
   if (!$('atv').classList.contains('show')) return;
@@ -1466,7 +1476,76 @@ $('atvClose').onclick = async () => {
 };
 setInterval(atvUi, 250);   // keeps "now" speed and standstill state fresh between samples
 $('accCustom').onchange = () => accSetTarget(Math.round(parseFloat($('accCustom').value) * 10) / 10);
-$('btnAccClear').onclick = () => { accRuns = []; accLastMsg = ''; accUi(); };
+$('btnAccClear').onclick = () => { accRuns = []; accLastMsg = ''; accSel = null; accUi(); };
+// ---------- acceleration run chart: speed or g against time or distance ----------
+let accSel = null, accAx = {y: 'v', x: 't'}, accChartPending = false;
+try { const j = JSON.parse(localStorage.getItem('gsm020accax') || 'null'); if (j) accAx = {...accAx, ...j}; } catch (e) {}
+const accCv = $('accChart');
+function accChartSoon() { if (!accChartPending) { accChartPending = true; requestAnimationFrame(() => { accChartPending = false; accChartDraw(); }); } }
+function accChartDraw() {
+  const W = accCv.clientWidth, H = accCv.clientHeight, dpr = window.devicePixelRatio || 1;
+  if (!W || !H) return;
+  accCv.width = W * dpr; accCv.height = H * dpr;
+  const g = accCv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  // which runs: the live run (or the chosen one) solid, the best run dashed
+  const hits = accRuns.filter(r => accKey(r));
+  const best = hits.length ? hits.reduce((a, r) => accKey(r).ms < accKey(a).ms ? r : a) : null;
+  const main = accRun ? {n: 'สด', trace: accRun.trace} : (accRuns.find(r => r.n === accSel) || accRuns[accRuns.length - 1] || null);
+  const series = [];
+  if (best && best !== main && best.trace) series.push({run: best, color: '#2ecc71', dash: [6, 5], label: `ดีที่สุด (ครั้งที่ ${best.n})`});
+  if (main && main.trace) series.push({run: main, color: '#3fa7ff', dash: [], label: accRun ? 'กำลังวัด' : `ครั้งที่ ${main.n}`});
+  const X = p => accAx.x === 't' ? p[0] / 1000 : p[1], Y = p => accAx.y === 'v' ? p[2] : p[3];
+  const pad = {l: 40, r: 10, t: 22, b: 26};
+  g.font = '11px system-ui'; g.fillStyle = '#8a96a3';
+  if (!series.length) { g.fillText('ยังไม่มีข้อมูล: หยุดรถให้นิ่ง แล้วออกตัว', pad.l, H / 2); return; }
+  let xmax = 0, ymin = 0, ymax = 0;
+  series.forEach(s => s.run.trace.forEach(p => { xmax = Math.max(xmax, X(p)); ymax = Math.max(ymax, Y(p)); ymin = Math.min(ymin, Y(p)); }));
+  // show the chosen target on the axis it belongs to
+  const tgtX = accMode === 'dist' && accAx.x === 'd' ? accT.dist : null, tgtY = accMode === 'spd' && accAx.y === 'v' ? accT.spd : null;
+  if (tgtX) xmax = Math.max(xmax, tgtX); if (tgtY) ymax = Math.max(ymax, tgtY);
+  const nice = (v, st) => Math.ceil(v / st) * st;
+  xmax = accAx.x === 't' ? Math.max(1, nice(xmax, 1)) : Math.max(10, nice(xmax, 10));
+  if (accAx.y === 'v') { ymin = 0; ymax = Math.max(10, nice(ymax, 10)); } else { ymax = Math.max(0.5, nice(ymax, 0.25)); ymin = Math.min(0, -nice(-ymin, 0.25)); }
+  const px = x => pad.l + (W - pad.l - pad.r) * x / xmax, py = y => pad.t + (H - pad.t - pad.b) * (1 - (y - ymin) / (ymax - ymin));
+  g.strokeStyle = '#2a313b'; g.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const yv = ymin + (ymax - ymin) * i / 4, y = py(yv);
+    g.beginPath(); g.moveTo(pad.l, y); g.lineTo(W - pad.r, y); g.stroke();
+    g.fillText(accAx.y === 'v' ? String(Math.round(yv)) : yv.toFixed(2), 4, y + 4);
+    const xv = xmax * i / 4, x = px(xv);
+    g.fillText(accAx.x === 't' ? xv.toFixed(1) : String(Math.round(xv)), x - 8, H - 8);
+  }
+  if (ymin < 0) { g.strokeStyle = '#4a5563'; g.beginPath(); g.moveTo(pad.l, py(0)); g.lineTo(W - pad.r, py(0)); g.stroke(); }
+  g.fillText(accAx.y === 'v' ? 'km/h' : 'g', 4, 12);
+  g.fillText(accAx.x === 't' ? 'วินาที' : 'เมตร', W - pad.r - 30, H - 8 - 12);
+  g.setLineDash([3, 4]); g.strokeStyle = '#f1c40f';
+  if (tgtX) { g.beginPath(); g.moveTo(px(tgtX), pad.t); g.lineTo(px(tgtX), H - pad.b); g.stroke(); }
+  if (tgtY) { g.beginPath(); g.moveTo(pad.l, py(tgtY)); g.lineTo(W - pad.r, py(tgtY)); g.stroke(); }
+  g.setLineDash([]);
+  let lx = pad.l + 4;
+  series.forEach(s => {
+    g.strokeStyle = s.color; g.lineWidth = 2.5; g.setLineDash(s.dash); g.lineJoin = 'round';
+    g.beginPath(); s.run.trace.forEach((p, i) => { const x = px(X(p)), y = py(Y(p)); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
+    g.setLineDash(s.dash); g.beginPath(); g.moveTo(lx, 11); g.lineTo(lx + 18, 11); g.stroke(); g.setLineDash([]);
+    g.fillStyle = s.color; g.fillText(s.label, lx + 22, 15); lx += g.measureText(s.label).width + 40;
+  });
+}
+new ResizeObserver(accChartDraw).observe(accCv);
+document.querySelectorAll('[data-accy]').forEach(b => b.onclick = () => { accAx.y = b.dataset.accy; accAxUi(); });
+document.querySelectorAll('[data-accx]').forEach(b => b.onclick = () => { accAx.x = b.dataset.accx; accAxUi(); });
+function accAxUi() {
+  document.querySelectorAll('[data-accy]').forEach(b => b.classList.toggle('sel', b.dataset.accy === accAx.y));
+  document.querySelectorAll('[data-accx]').forEach(b => b.classList.toggle('sel', b.dataset.accx === accAx.x));
+  try { localStorage.setItem('gsm020accax', JSON.stringify(accAx)); } catch (e) {}
+  accChartDraw();
+}
+$('accTable').tBodies[0].onclick = e => {
+  const tr = e.target.closest && e.target.closest('tr[data-run]'); if (!tr) return;
+  accSel = Number(tr.dataset.run); accUi();
+};
+accAxUi();
+
+
 accFillTargets(); accUi();
 
 // ---------- braking points (from longitudinal g) ----------

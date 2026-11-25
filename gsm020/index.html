@@ -133,7 +133,7 @@
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-20</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-21</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <div class="seg" role="group" aria-label="แหล่งข้อมูล" style="flex-basis:100%;width:max-content"><button data-src="gsm">GSM020</button><button data-src="phone">GPS มือถืออย่างเดียว</button></div>
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
@@ -173,6 +173,32 @@
   </div>
   <div class="note" style="padding:6px 0 0">ค่าเริ่มต้นเหมาะกับรถ RC 1/10 (2.0 kg, CdA 0.016, Crr 0.02) รถ 1/8 ลองน้ำหนัก 3.5–4.5 kg, CdA 0.03 · แก้แล้วคำนวณใหม่ทั้งรอบทันที</div>
 </details>
+
+<div class="lap" id="stBox">
+  <b style="font-size:15px">พวงมาลัย · อันเดอร์/โอเวอร์สเตียร์ <span class="kv" style="font-weight:400">(มือถือติดที่พวงมาลัย)</span></b>
+  <div class="row" style="margin-top:8px">
+    <div><div class="kv">มุมพวงมาลัย</div><div class="cur" id="stWheel" style="font-size:clamp(30px,9vw,52px)">-</div></div>
+    <div class="kv">มุมล้อ<b id="stRoad">-</b></div>
+    <div class="kv">แรง G ด้านข้าง<b id="stAy">-</b></div>
+  </div>
+  <div style="position:relative;height:14px;margin:8px 0;border-radius:7px;background:linear-gradient(90deg,#2a313b,#181d24 50%,#2a313b)">
+    <div style="position:absolute;left:50%;top:-3px;width:2px;height:20px;background:var(--mut)"></div>
+    <div id="stBar" style="position:absolute;left:50%;top:-4px;width:14px;height:22px;margin-left:-7px;border-radius:5px;background:var(--acc)"></div>
+  </div>
+  <div class="kv">ผลวิเคราะห์โค้งล่าสุด</div>
+  <div id="stUs" style="font-size:clamp(22px,6vw,34px);font-weight:800">-</div>
+  <div class="kv" id="stStatus" style="margin-top:6px;color:var(--warn)"></div>
+  <div class="btns">
+    <button class="pri" id="stBtn">▶ เริ่มเซ็นเซอร์พวงมาลัย</button>
+    <button id="stCalZero">① ตั้งตรงแล้วกด ตั้งศูนย์</button>
+    <button id="stCalLeft">② หมุนซ้าย 90°</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px">
+    <label class="kv">ฐานล้อ (m)<input id="stL" type="number" step="0.01" min="0.5" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
+    <label class="kv">อัตราทดพวงมาลัย (หมุนพวงมาลัย : ล้อ)<input id="stR" type="number" step="0.1" min="1" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
+  </div>
+  <div class="kv" style="margin-top:6px">ต้องเชื่อมต่อ GSM020 (หรือใช้ GPS มือถือ) และเปิด GPS มือถือด้วย เพื่อรู้ว่ารถเลี้ยวจริงเท่าไร สีเส้นทาง "อันเดอร์/โอเวอร์" บนแผนที่: ฟ้า = อันเดอร์สเตียร์, แดง = โอเวอร์สเตียร์, เทา = ทางตรง/สมดุล</div>
+</div>
 
 <div class="lap" id="sessBox">
   <b style="font-size:15px">บันทึก · เปิดดูย้อนหลัง</b>
@@ -258,7 +284,7 @@
 <div class="fig"><canvas id="chart"></canvas></div>
 
 <div class="sec" style="flex-wrap:wrap;gap:6px">
-  <div class="seg" role="group" aria-label="สีเส้นทาง"><button data-mapc="spd" class="sel">สีตามความเร็ว</button><button data-mapc="acc">สีเร่ง/เบรก</button></div>
+  <div class="seg" role="group" aria-label="สีเส้นทาง"><button data-mapc="spd" class="sel">สีตามความเร็ว</button><button data-mapc="acc">สีเร่ง/เบรก</button><button data-mapc="us">สีอันเดอร์/โอเวอร์</button></div>
   <select id="mapView" aria-label="แสดงบนแผนที่" style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px;font-size:13px;min-height:36px;max-width:100%"></select>
   <label class="kv" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="brkShow" checked style="width:20px;height:20px">จุดเบรก</label>
   <select id="brkG" aria-label="แรงเบรกขั้นต่ำ" style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px;font-size:13px;min-height:36px">
@@ -285,6 +311,7 @@
 </div></div>
 </div>
 <div class="legend" id="lgSpd"><span>ช้า</span><div class="grad"></div><span>เร็ว (<span id="lgMax">0</span> km/h)</span></div>
+<div class="legend" id="lgUs" hidden><span style="color:#3498ff">■ อันเดอร์สเตียร์</span><span style="color:#8a96a3">■ สมดุล/ทางตรง</span><span style="color:#e74c3c">■ โอเวอร์สเตียร์</span><span style="margin-left:auto">เข้มสุดที่ ±3° มุมล้อ</span></div>
 <div class="legend" id="lgAcc" hidden><span style="color:#2ecc71">■ เร่ง</span><span style="color:#c9b458">■ ปล่อยคันเร่ง</span><span style="color:#e74c3c">■ เบรก</span><span style="margin-left:auto">เข้มตามแรง G</span></div>
 <p class="note">ตัวเลขบนเส้นทางคือความเร็ว (km/h) ทุก ~25 m ป้ายขอบแดงคือจุดที่เร็วที่สุด GSM020 ไม่ส่งพิกัด แผนที่ใช้ตำแหน่งจาก GPS มือถือ แล้วเติมจุดระหว่างตำแหน่งด้วยระยะทางจาก GSM020 ทุกค่าความเร็วจึงมีจุดของตัวเอง (เส้นทางจะขึ้นช้ากว่าความจริงประมาณ 1–2 วินาที) ใช้ได้เมื่อมือถือเคลื่อนที่ไปกับรถ แตะเส้นทางเพื่อดูความเร็ว ณ จุดนั้น</p>
 
@@ -370,6 +397,7 @@ function resetRun() {
   fixes = []; assignIdx = 0; lastLabelDist = -1e9; maxPlaced = null; nFix = 0;
   if (maxMarker) { maxMarker.remove(); maxMarker = null; }
   brkZones = []; brkCur = null; brkPre = null; brkLayer.clearLayers();
+  prevPlaced = null; hdgPrev = null; yawF = 0; lastUs = null;
   trackLayer.clearLayers(); drawn = []; drawChart(); updateStats(null);
   if (typeof clearLaps === 'function') clearLaps();
 }
@@ -576,7 +604,7 @@ function accColor(acc) {
   if (g < -0.05) return mix(coast, [231, 76, 60], Math.min(1, (-g - 0.05) / 0.4));
   return `rgb(${coast})`;
 }
-const segColor = x => mapColor === 'acc' ? accColor(x.acc) : color(x.spd);
+const segColor = x => mapColor === 'acc' ? accColor(x.acc) : mapColor === 'us' ? usColor(x) : color(x.spd);
 function recolorTrack() { drawn.forEach(d => { const k = segColor(d.s); d.seg && d.seg.setStyle({color:k}); d.dot.setStyle({fillColor:k}); }); }
 // ---- which laps the map shows ----
 let mapView = 'all';
@@ -632,6 +660,7 @@ function renderTrack(fit) {
 function addMapPoint(s) {
   if (s.lat === undefined) return;
   if (typeof liveOn !== 'undefined' && liveOn) { placedQ.push(s); if (placedQ.length > 2000) placedQ.splice(0, placedQ.length - 2000); }
+  steerFeed(s);
   const sets = viewSets(), live = sets[sets.length - 1];
   if (live && s.t >= live.from && s.t <= live.to) drawPoint(s, !!live.faint);
   lapFeed(s);
@@ -914,8 +943,8 @@ $('btnDemo').onclick = () => {
 };
 $('btnCsv').onclick = () => {
   if (!samples.length) { msg('ยังไม่มีข้อมูล'); return; }
-  const csv = 'time,speed_kmh,accel_ms2,accel_g,distance_m,power_w,lat,lon\n' + samples.map(s =>
-    `${new Date(s.t).toISOString()},${s.spd.toFixed(2)},${s.acc.toFixed(3)},${(s.acc/G).toFixed(3)},${s.dist.toFixed(1)},${Math.round(s.pw || 0)},${s.lat ?? ''},${s.lon ?? ''}`).join('\n');
+  const csv = 'time,speed_kmh,accel_ms2,accel_g,distance_m,power_w,lat,lon,steer_wheel_deg,lateral_g,yaw_dps,understeer_deg\n' + samples.map(s =>
+    `${new Date(s.t).toISOString()},${s.spd.toFixed(2)},${s.acc.toFixed(3)},${(s.acc/G).toFixed(3)},${s.dist.toFixed(1)},${Math.round(s.pw || 0)},${s.lat ?? ''},${s.lon ?? ''},${s.sw == null ? '' : s.sw.toFixed(1)},${s.ay == null ? '' : s.ay.toFixed(3)},${s.yaw == null ? '' : s.yaw.toFixed(1)},${s.us == null ? '' : s.us.toFixed(2)}`).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
   a.download = `gsm020_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
@@ -1448,7 +1477,7 @@ $('brkG').onchange = () => {
 document.querySelectorAll('[data-mapc]').forEach(b => b.onclick = () => {
   mapColor = b.dataset.mapc;
   document.querySelectorAll('[data-mapc]').forEach(x => x.classList.toggle('sel', x === b));
-  $('lgSpd').hidden = mapColor !== 'spd'; $('lgAcc').hidden = mapColor !== 'acc';
+  $('lgSpd').hidden = mapColor !== 'spd'; $('lgAcc').hidden = mapColor !== 'acc'; $('lgUs').hidden = mapColor !== 'us';
   recolorTrack();
 });
 
@@ -1496,7 +1525,9 @@ function buildSession(name, id) {
   return {
     v: 1, id: id || 's' + Date.now(), name: name || defaultName(), saved: Date.now(), src,
     start: samples.length ? samples[0].t : Date.now(), mode: tMode, pts: tPts.map(p => ({...p})),
-    s: samples.map(x => [x.t, rr(x.spd, 2), rr(x.acc, 3), rr(x.dist, 1), x.lat === undefined ? null : rr(x.lat, 7), x.lon === undefined ? null : rr(x.lon, 7)]),
+    s: samples.map(x => [x.t, rr(x.spd, 2), rr(x.acc, 3), rr(x.dist, 1), x.lat === undefined ? null : rr(x.lat, 7), x.lon === undefined ? null : rr(x.lon, 7),
+                         x.sw == null ? null : rr(x.sw, 1), x.ay == null ? null : rr(x.ay, 3), x.yaw == null ? null : rr(x.yaw, 1), x.us == null ? null : rr(x.us, 2)]),
+    steer: {L: stCfg.L, ratio: stCfg.ratio},
     laps: laps.map(l => ({n:l.n, ms:l.ms, secs:l.secs, max:l.max, avg:l.avg, maxPw:l.maxPw, t0:l.t0, t1:l.t1, dist:l.dist})),
     acc: accRuns, accMode, accT: {...accT},
     sum: {laps: laps.length, best, max: rr(maxSpd, 1), dist: Math.round(distM), dur: samples.length ? samples[samples.length-1].t - samples[0].t : 0, accN: accRuns.length},
@@ -1508,7 +1539,9 @@ function loadSession(o) {
   if (editing) setEditing(false);
   resetRun();
   viewing = o;
-  samples = o.s.map(a => { const x = {t:a[0], spd:a[1], acc:a[2], dist:a[3]}; if (a[4] != null) { x.lat = a[4]; x.lon = a[5]; } x.pw = powerW(x.spd, x.acc); return x; });
+  samples = o.s.map(a => { const x = {t:a[0], spd:a[1], acc:a[2], dist:a[3]}; if (a[4] != null) { x.lat = a[4]; x.lon = a[5]; }
+    if (a[6] != null) x.sw = a[6]; if (a[7] != null) x.ay = a[7]; if (a[8] != null) x.yaw = a[8]; if (a[9] != null) x.us = a[9];
+    x.pw = powerW(x.spd, x.acc); return x; });
   maxSpd = Math.max(0, ...samples.map(x => x.spd));
   maxAcc = Math.max(0, ...samples.map(x => Math.abs(x.acc) / G));
   maxPw = Math.max(0, ...samples.map(x => x.pw));
@@ -1614,6 +1647,140 @@ setInterval(async () => {
   try { await IDB.put(buildSession('บันทึกอัตโนมัติ', 'autosave')); listSessions(); } catch (e) {}
 }, 5000);
 listSessions();
+
+// ---------- steering wheel sensor (phone on the steering wheel) + under/oversteer ----------
+// Steering-wheel angle: phone gyro integrated about the steering column axis (found in calibration).
+// Car response: yaw rate from the smoothed GPS track x GSM020 speed. Bicycle model:
+//   kinematic road-wheel angle  dk = wheelbase x path curvature = L * yawRate / v
+//   actual road-wheel angle     d  = steering-wheel angle / steering ratio
+//   steer error (d - dk) in the turn direction: + = understeer, - = oversteer
+// Left turns are positive for both steering and yaw. Values on the map lag 1-2 s (GPS smoothing).
+let stCfg = {L: 1.55, ratio: 5, axis: 'alpha', sign: 1, bias: {alpha: 0, beta: 0, gamma: 0}, ok: false};
+try { const j = JSON.parse(localStorage.getItem('gsm020steer') || 'null'); if (j) stCfg = {...stCfg, ...j, bias: {...stCfg.bias, ...(j.bias || {})}}; } catch (e) {}
+const stSave = () => { try { localStorage.setItem('gsm020steer', JSON.stringify(stCfg)); } catch (e) {} };
+let stOn = false, stAngle = 0, stLastT = null, stHist = [], stCal = null, lastAy = 0, prevPlaced = null, yawF = 0, hdgPrev = null, lastUs = null;
+function onMotion(e) {
+  const r = e.rotationRate; if (!r) return;
+  const t = Date.now(), dt = stLastT == null ? 0 : Math.min(0.1, (t - stLastT) / 1000);
+  stLastT = t;
+  if (stCal && stCal.kind === 'zero') { stCal.n++; ['alpha', 'beta', 'gamma'].forEach(k => stCal.sum[k] += (r[k] || 0)); return; }
+  if (stCal && stCal.kind === 'left') { ['alpha', 'beta', 'gamma'].forEach(k => stCal.sum[k] += ((r[k] || 0) - stCfg.bias[k]) * dt); stUi(); return; }
+  if (!stCfg.ok) return;
+  const rate = ((r[stCfg.axis] || 0) - stCfg.bias[stCfg.axis]) * stCfg.sign;          // deg/s, left +
+  stAngle += rate * dt;
+  // gyro drift: on a straight at speed (no lateral g, wheel not moving) ease the angle back to centre
+  // only when fresh track data confirms a straight, and only for small residual angles
+  const s = samples[samples.length - 1], fresh = prevPlaced && t - prevPlaced.t < 3000 && prevPlaced.ay != null;
+  if (s && fresh && s.spd > 15 && Math.abs(prevPlaced.ay) < 0.05 && Math.abs(rate) < 5 && Math.abs(stAngle) < 15) stAngle -= stAngle * Math.min(1, 0.2 * dt);
+  stHist.push([t, stAngle]);
+  if (stHist.length > 3000) stHist.splice(0, 1000);
+}
+function steerAt(t) {                         // wheel angle at time t (history is time-ordered)
+  if (!stHist.length || t < stHist[0][0]) return null;
+  let i = stHist.length - 1; while (i > 0 && stHist[i][0] > t) i--;
+  const a = stHist[i], b = stHist[i + 1];
+  if (!b) return t - a[0] < 500 ? a[1] : null;
+  return a[1] + (b[1] - a[1]) * (t - a[0]) / Math.max(1, b[0] - a[0]);
+}
+function bearingDeg(a, b) {
+  const k = Math.PI / 180, y = Math.sin((b.lon - a.lon) * k) * Math.cos(b.lat * k);
+  const x = Math.cos(a.lat * k) * Math.sin(b.lat * k) - Math.sin(a.lat * k) * Math.cos(b.lat * k) * Math.cos((b.lon - a.lon) * k);
+  return Math.atan2(y, x) / k;
+}
+function steerFeed(s) {                       // called for every positioned sample, in time order
+  const p = prevPlaced; prevPlaced = s;
+  if (!p || s.t - p.t > 1500 || s.t <= p.t) { hdgPrev = null; return; }
+  if (distM2(p, s) < 0.3) return;             // too close for a stable heading
+  const h = bearingDeg(p, s);
+  if (hdgPrev != null) {
+    let dh = h - hdgPrev.h; if (dh > 180) dh -= 360; if (dh < -180) dh += 360;
+    const w = -dh / ((s.t - hdgPrev.t) / 1000);                         // deg/s, left +
+    yawF = 0.3 * w + 0.7 * yawF;
+  }
+  hdgPrev = {h, t: s.t};
+  const v = s.spd / 3.6;
+  s.yaw = yawF;
+  s.ay = v * yawF * Math.PI / 180 / G;                                 // lateral g, left +
+  lastAy = s.ay;
+  const sw = steerAt(s.t);
+  if (sw != null && stCfg.ok) {
+    s.sw = sw;
+    if (v > 4 && Math.abs(s.ay) > 0.15) {
+      const dk = stCfg.L * (yawF * Math.PI / 180) / v * 180 / Math.PI;  // kinematic road-wheel angle, deg
+      const d = sw / stCfg.ratio;
+      s.us = (d - dk) * Math.sign(dk);                                   // + understeer, - oversteer
+      lastUs = s;
+    }
+  }
+}
+function usColor(x) {
+  if (x.us == null) return 'rgb(120,130,140)';
+  const t = Math.min(1, Math.abs(x.us) / 3), g = [120, 130, 140];
+  const to = x.us > 0 ? [52, 152, 255] : [231, 76, 60];
+  return `rgb(${g.map((c, i) => Math.round(c + (to[i] - c) * t))})`;
+}
+const sideTxt = a => a == null ? '-' : Math.abs(a) < 0.5 ? 'ตรง 0°' : `${a > 0 ? 'ซ้าย' : 'ขวา'} ${Math.abs(a).toFixed(0)}°`;
+function stUi() {
+  $('stBtn').textContent = stOn ? '■ หยุดเซ็นเซอร์พวงมาลัย' : '▶ เริ่มเซ็นเซอร์พวงมาลัย';
+  $('stBtn').classList.toggle('on', stOn);
+  $('stL').value = $('stL').value || stCfg.L; $('stR').value = $('stR').value || stCfg.ratio;
+  let st;
+  if (!stOn) st = 'ติดมือถือที่พวงมาลัยให้แน่น แล้วกด "เริ่มเซ็นเซอร์พวงมาลัย"';
+  else if (stCal && stCal.kind === 'zero') st = 'อย่าขยับพวงมาลัย กำลังตั้งศูนย์ ...';
+  else if (stCal && stCal.kind === 'left') { const m = Math.max(...['alpha', 'beta', 'gamma'].map(k => Math.abs(stCal.sum[k]))); st = `หมุนพวงมาลัยไปทางซ้ายประมาณ 90° ค้างไว้ แล้วกด "เสร็จ" (ตอนนี้ ${m.toFixed(0)}°)`; }
+  else if (!stCfg.ok) st = 'ยังไม่ได้ปรับเทียบ: ทำขั้น ① และ ② ด้านล่าง';
+  else st = 'พร้อม · ค่าอันเดอร์/โอเวอร์สเตียร์คำนวณเมื่อเข้าโค้ง (แรง G ด้านข้างเกิน 0.15 g) และช้ากว่าจริงประมาณ 1–2 วินาที';
+  $('stStatus').textContent = st;
+  $('stCalZero').disabled = !stOn; $('stCalLeft').disabled = !stOn || !stCfg.bias;
+  $('stCalLeft').textContent = stCal && stCal.kind === 'left' ? '✓ เสร็จ (หมุนซ้ายค้างไว้แล้ว)' : '② หมุนซ้าย 90°';
+}
+function stTick() {
+  if (!$('stBox')) return;
+  const sw = stOn && stCfg.ok ? stAngle : null;
+  $('stWheel').textContent = sideTxt(sw);
+  $('stRoad').textContent = sw == null ? '-' : `${(sw / stCfg.ratio).toFixed(1)}°`;
+  $('stBar').style.left = sw == null ? '50%' : `${50 - Math.max(-48, Math.min(48, sw / 180 * 48))}%`;
+  const s = samples[samples.length - 1];
+  $('stAy').textContent = prevPlaced && prevPlaced.ay != null ? `${Math.abs(prevPlaced.ay).toFixed(2)} g ${prevPlaced.ay > 0.05 ? 'ซ้าย' : prevPlaced.ay < -0.05 ? 'ขวา' : ''}` : '-';
+  const u = lastUs && Date.now() - lastUs.t < 4000 ? lastUs.us : null;
+  const el = $('stUs');
+  if (u == null) { el.textContent = 'ทางตรง / ไม่มีข้อมูลโค้ง'; el.style.color = ''; }
+  else if (Math.abs(u) < 0.5) { el.textContent = `สมดุล ${u >= 0 ? '+' : ''}${u.toFixed(1)}°`; el.style.color = 'var(--ok)'; }
+  else { el.textContent = `${u > 0 ? 'อันเดอร์สเตียร์' : 'โอเวอร์สเตียร์'} ${u > 0 ? '+' : ''}${u.toFixed(1)}°`; el.style.color = u > 0 ? '#3498ff' : '#e74c3c'; }
+}
+setInterval(stTick, 100);
+$('stBtn').onclick = async () => {
+  if (stOn) { window.removeEventListener('devicemotion', onMotion); stOn = false; stCal = null; stUi(); return; }
+  try { if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) { const r = await DeviceMotionEvent.requestPermission(); if (r !== 'granted') throw new Error('ไม่ได้รับอนุญาต'); } }
+  catch (e) { $('stStatus').textContent = 'ใช้เซ็นเซอร์ไม่ได้: ' + e.message; return; }
+  window.addEventListener('devicemotion', onMotion);
+  stOn = true; stAngle = 0; stHist = []; stLastT = null; stUi();
+};
+$('stCalZero').onclick = () => {
+  stCal = {kind: 'zero', n: 0, sum: {alpha: 0, beta: 0, gamma: 0}}; stUi();
+  setTimeout(() => {
+    if (!stCal || stCal.kind !== 'zero') return;
+    const n = Math.max(1, stCal.n); stCfg.bias = {alpha: stCal.sum.alpha / n, beta: stCal.sum.beta / n, gamma: stCal.sum.gamma / n};
+    stCal = null; stAngle = 0; stHist = []; stSave(); stUi();
+    $('stStatus').textContent = stCfg.ok ? 'ตั้งศูนย์แล้ว' : 'ตั้งศูนย์แล้ว ต่อไปทำขั้น ② หมุนซ้าย 90°';
+  }, 2000);
+};
+$('stCalLeft').onclick = () => {
+  if (!stCal || stCal.kind !== 'left') { stCal = {kind: 'left', sum: {alpha: 0, beta: 0, gamma: 0}}; stLastT = null; stUi(); return; }
+  const k = ['alpha', 'beta', 'gamma'].reduce((a, b) => Math.abs(stCal.sum[b]) > Math.abs(stCal.sum[a]) ? b : a);
+  const turned = stCal.sum[k];
+  stCal = null;
+  if (Math.abs(turned) < 30) { $('stStatus').textContent = 'หมุนน้อยเกินไป ลองใหม่ หมุนซ้ายประมาณ 90°'; stUi(); return; }
+  stCfg.axis = k; stCfg.sign = turned > 0 ? 1 : -1; stCfg.ok = true;
+  stAngle = Math.abs(turned); stHist = []; stSave(); stUi();
+  $('stStatus').textContent = `ปรับเทียบแล้ว วัดได้ ${Math.abs(turned).toFixed(0)}° (ถ้าหมุนไป 90° จริง ค่านี้ควรใกล้ 90) คืนพวงมาลัยตรงได้เลย`;
+};
+['stL', 'stR'].forEach(id => $(id).onchange = () => {
+  const L = parseFloat($('stL').value), R = parseFloat($('stR').value);
+  if (L > 0.3) stCfg.L = L; if (R > 0.5) stCfg.ratio = R; stSave();
+});
+$('stL').value = stCfg.L; $('stR').value = stCfg.ratio;
+stUi();
 
 // ---------- reference lap + deltas ----------
 let refMode = 'best';

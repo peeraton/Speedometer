@@ -42,6 +42,8 @@
   .chip em{font-style:normal;color:var(--mut);font-size:12px;margin-right:2px}
   .chip.now{border-color:#3fa7ff}
   td.purple{color:#b57cff;font-weight:700}
+  .locbtn{width:44px;height:44px;font-size:22px;line-height:40px;text-align:center;background:#fff;color:#111;border:2px solid rgba(0,0,0,.25);border-radius:8px;cursor:pointer;padding:0}
+  .locbtn.on{background:#3fa7ff;color:#fff}
   #status{padding:0 14px;font-size:12px;color:#f1c40f;min-height:16px}
   .sec{margin:8px 14px 4px;font-size:13px;color:var(--mut)}
   .fig{position:relative;height:200px;margin:0 14px;background:var(--card);border:1px solid var(--line);border-radius:12px}
@@ -166,9 +168,17 @@ function start(room) {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:20, attribution:'© OpenStreetMap'}).addTo(map);
     trackLayer = L.layerGroup().addTo(map);
     car = L.circleMarker([0,0], {radius:8, color:'#000', weight:2, fillColor:'#fff', fillOpacity:1});
-    map.on('dragstart', () => follow = false);
-    map.on('click', () => follow = true);
+    map.on('dragstart', () => { follow = false; locUi(); });
+    map.on('click', () => { follow = true; locUi(); });
+    const Ctl = L.Control.extend({ options:{position:'topleft'}, onAdd() {
+      const b = L.DomUtil.create('button', 'locbtn on');
+      b.id = 'btnLoc'; b.type = 'button'; b.title = 'ไปที่ตำแหน่งรถ'; b.setAttribute('aria-label', 'ไปที่ตำแหน่งรถ'); b.textContent = '◎';
+      L.DomEvent.disableClickPropagation(b);
+      L.DomEvent.on(b, 'click', () => { follow = true; locUi(); if (car && map.hasLayer(car)) map.setView(car.getLatLng(), Math.max(map.getZoom(), 17)); });
+      return b; } });
+    new Ctl().addTo(map);
   }
+  function locUi() { const b = document.getElementById('btnLoc'); if (b) b.classList.toggle('on', follow); }
   function addSeg(a, b) {
     const s = L.polyline([[a.lat,a.lon],[b.lat,b.lon]], {color:color(b.spd), weight:5, opacity:.9}).addTo(trackLayer);
     s.bindTooltip(`${b.spd.toFixed(1)} km/h`, {sticky:true});

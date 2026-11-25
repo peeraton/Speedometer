@@ -87,12 +87,14 @@
   .editbar{display:none;margin:6px 12px 0;padding:8px 10px;border-radius:10px;background:#12304a;border:1px solid var(--acc);font-size:13px;line-height:1.5}
   .editbar.show{display:block}
   .leaflet-popup-content button{min-height:36px;padding:6px 10px;margin-top:6px;background:#e74c3c;border-color:#e74c3c;color:#fff}
+  .locbtn{width:44px;height:44px;font-size:22px;line-height:40px;text-align:center;background:#fff;color:#111;border:2px solid rgba(0,0,0,.25);border-radius:8px;cursor:pointer;padding:0;min-height:0}
+  .locbtn.on{background:#3fa7ff;color:#fff}
   #mapInfo{padding:4px 12px 0;font-size:12px;color:var(--warn)}
   .note{font-size:12px;color:var(--mut);line-height:1.5;padding:0 12px}
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-7</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-8</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -400,7 +402,8 @@ function startGps() {
     gps = {lat:p.coords.latitude, lon:p.coords.longitude, t:Date.now(), acc:p.coords.accuracy};
     me.setLatLng([gps.lat, gps.lon]).addTo(map);
     if (gps.acc <= GPS_MAX_ERR) { nFix++; onFix(gps); }
-    if (follow) map.setView([gps.lat, gps.lon], Math.max(map.getZoom(), 17), {animate:false});
+    if (wantCenter) { wantCenter = false; map.setView([gps.lat, gps.lon], Math.max(map.getZoom(), 18)); }
+    else if (follow) map.setView([gps.lat, gps.lon], Math.max(map.getZoom(), 17), {animate:false});
     mapInfo();
   }, e => {
     if (e.code === 1) {            // permission denied or prompt dismissed: stop and explain
@@ -427,6 +430,32 @@ function stopGps(keepErr) {
 $('btnGps').onclick = () => gpsWatch !== null ? stopGps() : startGps();
 
 setInterval(mapInfo, 1000);
+
+// ---------- "go to my position" button on the map ----------
+let wantCenter = false;
+const LocCtl = L.Control.extend({
+  options: {position: 'topleft'},
+  onAdd() {
+    const b = L.DomUtil.create('button', 'locbtn');
+    b.id = 'btnLoc'; b.type = 'button'; b.title = 'ไปที่ตำแหน่งของฉัน'; b.setAttribute('aria-label', 'ไปที่ตำแหน่งของฉัน');
+    b.textContent = '◎';
+    L.DomEvent.disableClickPropagation(b);
+    L.DomEvent.on(b, 'click', goToMe);
+    return b;
+  }
+});
+new LocCtl().addTo(map);
+function goToMe() {
+  follow = !editing;                        // keep following the phone, except while placing points
+  if (gps) { map.setView([gps.lat, gps.lon], Math.max(map.getZoom(), 18)); locUi(); return; }
+  wantCenter = true;                        // no fix yet: centre as soon as one arrives
+  if (gpsWatch === null) startGps();
+  $('mapInfo').textContent = 'กำลังหาตำแหน่งของคุณ ...';
+  locUi();
+}
+function locUi() { const b = document.getElementById('btnLoc'); if (b) b.classList.toggle('on', !!follow && gpsWatch !== null); }
+map.on('dragstart', () => setTimeout(locUi, 0));
+setInterval(locUi, 1000);
 
 // ---------- raw log ----------
 let rawLines = [];

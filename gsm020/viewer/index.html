@@ -123,7 +123,7 @@
   </div>
   <div class="lap" id="lapBox" hidden>
     <div class="row">
-      <div><div class="kv" id="lapNo">รอบปัจจุบัน</div><div class="cur" id="lapCur">--:--.-</div></div>
+      <div><div class="kv" id="lapNo">รอบปัจจุบัน</div><div class="cur" id="lapCur">--:--.--</div></div>
       <div class="kv"><span id="dLbl">ต่างจากรอบดีที่สุด</span><b id="lapD">-</b></div>
       <div class="kv">รอบล่าสุด<b id="lapLast">-</b><span id="lapLastD"></span></div>
       <div class="kv">ดีที่สุด<b id="lapBest" class="neg">-</b><span id="lapBestN"></span></div>
@@ -157,7 +157,7 @@
 <div id="mapBox">
 <div id="map"></div>
 <div class="hud hud-top"><div class="pane">
-  <div><span class="lbl" id="hLapNo">รอบปัจจุบัน</span><span class="big" id="hCur">--:--.-</span></div>
+  <div><span class="lbl" id="hLapNo">รอบปัจจุบัน</span><span class="big" id="hCur">--:--.--</span></div>
   <div><span class="lbl" id="hDLbl">ต่างจากดีสุด</span><span class="mid" id="hD">-</span></div>
   <div><span class="lbl">ล่าสุด</span><span class="mid" id="hLast">-</span></div>
   <div><span class="lbl">ดีที่สุด</span><span class="mid neg" id="hBest">-</span></div>
@@ -359,7 +359,7 @@ function start(room) {
 
   // ---- laps (sent by the tracker) ----
   let lap = null, lapRecv = 0, secRecv = 0, ptLayer = null, lapRows = [], lastN = 0, startMk = null, startCirc = null;
-  const fmtLap = ms => { if (ms == null) return '-'; const t = ms/1000, m = Math.floor(t/60); return `${m}:${(t-m*60).toFixed(1).padStart(4,'0')}`; };
+  const fmtLap = ms => { if (ms == null) return '-'; const t = Math.round(ms / 10) / 100, m = Math.floor(t/60); return `${m}:${(t-m*60).toFixed(2).padStart(5,'0')}`; };
   const fmtD = ms => ms == null ? '-' : (ms < 0 ? '-' : '+') + (Math.abs(ms)/1000).toFixed(2) + ' s';
   const tone = (el, ms) => { el.classList.toggle('neg', ms != null && ms < 0); el.classList.toggle('pos', ms != null && ms > 0); };
   function setLap(l) {
@@ -432,7 +432,7 @@ function start(room) {
     startMk = L.marker([st.lat, st.lon], {interactive:false, icon:L.divIcon({className:'', iconSize:null, html:'<div class="startlbl">🏁 สตาร์ท</div>'})}).addTo(map);
   }
   setInterval(() => {
-    if (!lap || lap.el == null) { $('lapCur').textContent = '--:--.-'; return; }
+    if (!lap || lap.el == null) { $('lapCur').textContent = '--:--.--'; return; }
     const live = $('live').classList.contains('on');
     $('lapCur').textContent = fmtLap(lap.el + (live ? Date.now() - lapRecv : 0));
     let dv = liveDeltaV(); if (dv == null && refNow() === lap.ref) dv = lap.d;

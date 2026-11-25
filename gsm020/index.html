@@ -133,7 +133,7 @@
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-18</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-19</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -212,7 +212,7 @@
     <div class="seg" role="group" aria-label="โหมดจับเวลา" style="flex-wrap:wrap"><button data-tmode="simple">เซอร์กิต</button><button data-tmode="circuit">เซอร์กิต+เซกเตอร์</button><button data-tmode="rally">แรลลี่</button></div>
   </div>
   <div class="row" style="margin-top:8px">
-    <div><div class="kv" id="lapCurLbl">รอบปัจจุบัน</div><div class="cur" id="lapCur">--:--.-</div></div>
+    <div><div class="kv" id="lapCurLbl">รอบปัจจุบัน</div><div class="cur" id="lapCur">--:--.--</div></div>
     <div class="kv" style="margin-left:auto"><span id="lapLastLbl">รอบล่าสุด</span><b id="lapLast">-</b></div>
     <div class="kv">ดีที่สุด<b id="lapBest" style="color:var(--ok)">-</b></div>
     <div class="kv" id="lapTheoBox" hidden>ดีสุดตามทฤษฎี<b id="lapTheo" style="color:#b57cff">-</b></div>
@@ -270,7 +270,7 @@
 <div id="mapWrap">
 <div id="map"></div>
 <div class="hud hud-top"><div class="pane">
-  <div><span class="lbl" id="hLapNo">รอบปัจจุบัน</span><span class="big" id="hCur">--:--.-</span></div>
+  <div><span class="lbl" id="hLapNo">รอบปัจจุบัน</span><span class="big" id="hCur">--:--.--</span></div>
   <div><span class="lbl" id="hDLbl">ต่างจากดีสุด</span><span class="mid" id="hD">-</span></div>
   <div><span class="lbl">ล่าสุด</span><span class="mid" id="hLast">-</span></div>
   <div><span class="lbl">ดีที่สุด</span><span class="mid neg" id="hBest">-</span></div>
@@ -317,7 +317,7 @@
     <div class="tvt last"><span class="lbl">รอบล่าสุด</span><b id="tvLast">-</b><span id="tvLastD" class="lbl"></span></div>
   </div>
   <div class="main">
-    <div><div class="lbl" id="tvCurLbl">เวลารอบนี้</div><div class="cur" id="tvCur">--:--.-</div><div class="chips" id="tvSecs"></div></div>
+    <div><div class="lbl" id="tvCurLbl">เวลารอบนี้</div><div class="cur" id="tvCur">--:--.--</div><div class="chips" id="tvSecs"></div></div>
     <div><div class="lbl" id="tvLiveLbl">ต่างจากรอบดีที่สุด (ตอนนี้)</div><div class="live" id="tvLive">-</div></div>
   </div>
   <div class="grid">
@@ -889,7 +889,7 @@ try {   // carry over a start point saved by the previous version
   const old = JSON.parse(localStorage.getItem('gsm020start') || 'null');
   if (old && isFinite(old.lat) && !loadPts('simple').length) { localStorage.setItem('gsm020pts_simple', JSON.stringify([{lat:old.lat, lon:old.lon, r:old.r || 8}])); if (tMode === 'simple') tPts = loadPts('simple'); }
 } catch (e) {}
-const fmtLap = ms => { if (ms == null) return '-'; const t = ms / 1000, m = Math.floor(t / 60); return `${m}:${(t - m*60).toFixed(1).padStart(4,'0')}`; };
+const fmtLap = ms => { if (ms == null) return '-'; const t = Math.round(ms / 10) / 100, m = Math.floor(t / 60); return `${m}:${(t - m*60).toFixed(2).padStart(5,'0')}`; };
 function distM2(a, b) {
   const R = 6371000, k = Math.PI/180, dLat = (b.lat-a.lat)*k, dLon = (b.lon-a.lon)*k;
   const h = Math.sin(dLat/2)**2 + Math.cos(a.lat*k)*Math.cos(b.lat*k)*Math.sin(dLon/2)**2;
@@ -969,6 +969,22 @@ let addAsFinish = false;
 // circuit: keep the old one-call API used by the demo
 function setStart(lat, lon, save) { tPts = [{lat, lon, r: Number($('lapR').value)}]; if (save) savePts(); laps = []; resetRunState(); drawPts(); lapUi(); }
 
+// Moment of passing a point, finer than the sample spacing: fit a parabola to the squared
+// distance from the point over the 3 samples around the closest one (exact for a straight,
+// steady pass) and take its lowest point; distance travelled is interpolated to that moment.
+function refinePass(buf, p) {
+  if (buf.length < 3) return null;
+  const f = buf.map(x => { const d = distM2(x, p); return d * d; });
+  let i = 0; f.forEach((v, k) => { if (v < f[i]) i = k; });
+  if (i === 0 || i === buf.length - 1) return null;
+  const a = buf[i-1], b = buf[i], c = buf[i+1], t0 = a.t - b.t, t2 = c.t - b.t;
+  const den = t0 * (f[i] - f[i+1]) - t2 * (f[i] - f[i-1]);
+  if (!den) return null;
+  let off = 0.5 * (t0 * t0 * (f[i] - f[i+1]) - t2 * t2 * (f[i] - f[i-1])) / den;   // ms from the closest sample
+  off = Math.max(t0, Math.min(t2, off));
+  const q = off < 0 ? a : c, k = (off < 0 ? off / t0 : off / t2);
+  return {t: b.t + off, dist: b.dist + (q.dist - b.dist) * k, spd: b.spd + (q.spd - b.spd) * k, lat: b.lat, lon: b.lon};
+}
 function lapFeed(s) {
   if (!tPts.length || s.lat === undefined) return;
   // which points can trigger now: the expected one, plus the line that ends the run
@@ -979,15 +995,18 @@ function lapFeed(s) {
     if (!p || !st) return;
     const d = distM2(s, p);
     if (d <= p.r) {
-      if (!st.in) { st.in = true; st.minD = Infinity; st.stopS = null; }
+      if (!st.in) { st.in = true; st.minD = Infinity; st.stopS = null; st.buf = st.before ? [st.before] : []; }
+      st.buf.push(s);
       if (d < st.minD) { st.minD = d; st.minS = s; }
       if (s.spd < 2) st.stopS = s;                  // standing start: time from launch
     } else if (st.in) {
       st.in = false;
-      const c = st.stopS || st.minS;
-      st.minS = st.stopS = null;
+      st.buf.push(s);
+      const c = st.stopS || refinePass(st.buf, p) || st.minS;
+      st.minS = st.stopS = null; st.buf = null;
       if (c) onPass(i, c);
     }
+    st.before = s;
   });
 }
 function finishRun(c) {
@@ -1124,7 +1143,7 @@ if (tPts.length) $('lapR').value = String(tPts[0].r);
 resetRunState(); drawPts();
 setInterval(() => {
   // running time: crossings are found ~1-2 s late (positions lag), but their timestamps are exact
-  $('lapCur').textContent = lastCross ? fmtLap(Date.now() - lastCross.t) : '--:--.-';
+  $('lapCur').textContent = lastCross ? fmtLap(Date.now() - lastCross.t) : '--:--.--';
   if (secStart) document.querySelectorAll('[data-live-sec]').forEach(el => el.textContent = fmtLap(Date.now() - secStart.t));
 }, 100);
 

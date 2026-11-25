@@ -142,7 +142,7 @@
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-26</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-27</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -188,7 +188,7 @@
 
 
 <div class="lap" id="lapBox">
-  <div class="btns" style="margin-top:0;align-items:center"><b style="font-size:15px">จับเวลาต่อรอบ</b><span class="kv" id="lapModeLbl"></span><button id="btnGoPts" style="margin-left:auto;min-height:36px;padding:6px 10px;font-size:13px">⚙️ ตั้งจุดจับเวลา</button></div>
+  <div class="btns" style="margin-top:0;align-items:center"><b style="font-size:15px">จับเวลาต่อรอบ</b><span class="kv" id="lapModeLbl"></span><button id="btnGoPts" style="margin-left:auto;min-height:36px;padding:6px 10px;font-size:13px">⚙️ ตั้งจุดจับเวลา ↓</button></div>
   <div class="row" style="margin-top:8px">
     <div><div class="kv" id="lapLiveLbl">ต่างจากรอบดีที่สุด</div><div id="lapLive" style="font-size:clamp(24px,7vw,40px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1">-</div>
       <div class="kv" id="lapCurLbl" style="margin-top:4px">รอบปัจจุบัน</div><div class="cur" id="lapCur">--:--.--</div></div>
@@ -206,6 +206,26 @@
   </div>
   <div id="lapInfo"></div>
   <div style="overflow-x:auto"><table class="laps" id="lapTable" hidden><thead><tr id="lapHead"></tr></thead><tbody></tbody></table></div>
+</div>
+<div class="lap" id="ptsBox" style="margin-top:-2px;border-top:1px dashed var(--line);border-top-left-radius:0;border-top-right-radius:0">
+  <b style="font-size:15px">จุดจับเวลา (สตาร์ท · เซกเตอร์ · เส้นชัย)</b>
+  <div class="btns" style="align-items:center"><span class="kv">โหมด</span>
+    <div class="seg" role="group" aria-label="โหมดจับเวลา" style="flex-wrap:wrap"><button data-tmode="simple">เซอร์กิต</button><button data-tmode="circuit">เซอร์กิต+เซกเตอร์</button><button data-tmode="rally">แรลลี่</button></div>
+  </div>
+  <div class="btns">
+    <button class="pri" id="btnAddPt">ตั้งสตาร์ท/เส้นชัยตรงนี้</button>
+    <button class="pri" id="btnFinish" hidden>ตั้งเส้นชัยตรงนี้</button>
+    <button id="btnUndoPt">ลบจุดล่าสุด</button>
+    <button id="btnClearPts">ล้างจุด</button>
+    <select id="lapR" aria-label="รัศมีจุดจับเวลา">
+      <option value="5">รัศมี 5 m</option><option value="8" selected>รัศมี 8 m</option>
+      <option value="12">รัศมี 12 m</option><option value="20">รัศมี 20 m</option>
+    </select>
+  </div>
+  <div class="kv" id="ptList" style="margin-top:6px"></div>
+  <div class="btns">
+    <button id="btnEdit">✏️ แก้ไขจุดบนแผนที่</button>
+  </div>
 </div>
 
 <div class="lap" id="accBox">
@@ -288,26 +308,7 @@
   </div>
 </div>
 
-<div class="lap" id="ptsBox">
-  <b style="font-size:15px">จุดจับเวลา (สตาร์ท · เซกเตอร์ · เส้นชัย)</b>
-  <div class="btns" style="align-items:center"><span class="kv">โหมด</span>
-    <div class="seg" role="group" aria-label="โหมดจับเวลา" style="flex-wrap:wrap"><button data-tmode="simple">เซอร์กิต</button><button data-tmode="circuit">เซอร์กิต+เซกเตอร์</button><button data-tmode="rally">แรลลี่</button></div>
-  </div>
-  <div class="btns">
-    <button class="pri" id="btnAddPt">ตั้งสตาร์ท/เส้นชัยตรงนี้</button>
-    <button class="pri" id="btnFinish" hidden>ตั้งเส้นชัยตรงนี้</button>
-    <button id="btnUndoPt">ลบจุดล่าสุด</button>
-    <button id="btnClearPts">ล้างจุด</button>
-    <select id="lapR" aria-label="รัศมีจุดจับเวลา">
-      <option value="5">รัศมี 5 m</option><option value="8" selected>รัศมี 8 m</option>
-      <option value="12">รัศมี 12 m</option><option value="20">รัศมี 20 m</option>
-    </select>
-  </div>
-  <div class="kv" id="ptList" style="margin-top:6px"></div>
-  <div class="btns">
-    <button id="btnEdit">✏️ แก้ไขจุดบนแผนที่</button>
-  </div>
-</div>
+
 
 <div class="lap" id="stBox">
   <b style="font-size:15px">พวงมาลัย · อันเดอร์/โอเวอร์สเตียร์ <span class="kv" style="font-weight:400">(มือถือติดที่พวงมาลัย)</span></b>

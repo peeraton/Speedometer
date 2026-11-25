@@ -95,12 +95,14 @@
   #atv .state.run{border-color:var(--acc);color:var(--acc)}
   #atv .state.done{border-color:var(--ok);color:#fff;background:#1d5e37}
   #atv .grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .brk{transform:translate(-50%,-130%);font:700 12px system-ui,sans-serif;background:#e74c3c;color:#fff;padding:2px 6px;border-radius:7px;border:1.5px solid #fff;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.5)}
+  .brk.old{opacity:.45}
   #mapInfo{padding:4px 12px 0;font-size:12px;color:var(--warn)}
   .note{font-size:12px;color:var(--mut);line-height:1.5;padding:0 12px}
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-12</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-13</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -205,11 +207,19 @@
 <div class="sec"><div class="seg" role="group" aria-label="กราฟ"><button data-chart="spd" class="sel">ความเร็ว</button><button data-chart="pw">กำลัง</button></div><span id="chartInfo"></span></div>
 <div class="fig"><canvas id="chart"></canvas></div>
 
+<div class="sec" style="flex-wrap:wrap;gap:6px">
+  <div class="seg" role="group" aria-label="สีเส้นทาง"><button data-mapc="spd" class="sel">สีตามความเร็ว</button><button data-mapc="acc">สีเร่ง/เบรก</button></div>
+  <label class="kv" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="brkShow" checked style="width:20px;height:20px">จุดเบรก</label>
+  <select id="brkG" aria-label="แรงเบรกขั้นต่ำ" style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px;font-size:13px;min-height:36px">
+    <option value="0.1">เบรก ≥ 0.1 g</option><option value="0.2" selected>เบรก ≥ 0.2 g</option><option value="0.3">เบรก ≥ 0.3 g</option><option value="0.5">เบรก ≥ 0.5 g</option>
+  </select>
+</div>
 <div class="sec"><span>แผนที่ (ตำแหน่งจาก GPS มือถือ)</span><button id="btnGps" style="padding:6px 10px;min-height:36px">ใช้ GPS มือถือ: ปิด</button></div>
 <div id="mapInfo"></div>
 <div class="editbar" id="editBar"></div>
 <div id="map"></div>
-<div class="legend"><span>ช้า</span><div class="grad"></div><span>เร็ว (<span id="lgMax">0</span> km/h)</span></div>
+<div class="legend" id="lgSpd"><span>ช้า</span><div class="grad"></div><span>เร็ว (<span id="lgMax">0</span> km/h)</span></div>
+<div class="legend" id="lgAcc" hidden><span style="color:#2ecc71">■ เร่ง</span><span style="color:#c9b458">■ ปล่อยคันเร่ง</span><span style="color:#e74c3c">■ เบรก</span><span style="margin-left:auto">เข้มตามแรง G</span></div>
 <p class="note">ตัวเลขบนเส้นทางคือความเร็ว (km/h) ทุก ~25 m ป้ายขอบแดงคือจุดที่เร็วที่สุด GSM020 ไม่ส่งพิกัด แผนที่ใช้ตำแหน่งจาก GPS มือถือ แล้วเติมจุดระหว่างตำแหน่งด้วยระยะทางจาก GSM020 ทุกค่าความเร็วจึงมีจุดของตัวเอง (เส้นทางจะขึ้นช้ากว่าความจริงประมาณ 1–2 วินาที) ใช้ได้เมื่อมือถือเคลื่อนที่ไปกับรถ แตะเส้นทางเพื่อดูความเร็ว ณ จุดนั้น</p>
 
 <div id="atv" role="dialog" aria-label="หน้าจอวัดอัตราเร่ง">
@@ -291,6 +301,7 @@ function resetRun() {
   accRun = null; accState = 'wait'; stillSince = null; accF = 0; distBase = 0; lastDistRaw = null; distM = 0; t0 = null;
   fixes = []; assignIdx = 0; lastLabelDist = -1e9; maxPlaced = null; nFix = 0;
   if (maxMarker) { maxMarker.remove(); maxMarker = null; }
+  brkZones = []; brkCur = null; brkPre = null; brkLayer.clearLayers();
   trackLayer.clearLayers(); drawn = []; drawChart(); updateStats(null);
   if (typeof clearLaps === 'function') clearLaps();
 }
@@ -439,10 +450,21 @@ function color(v) {
   const x = r * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(x)), f = x - i;
   return `rgb(${stops[i].map((a, j) => Math.round(a + (stops[i+1][j] - a) * f))})`;
 }
+// map colouring: by speed, or by longitudinal g (accelerating / coasting / braking)
+let mapColor = 'spd';
+function accColor(acc) {
+  const g = acc / G, mix = (a, b, t) => `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * t))})`;
+  const coast = [201, 180, 88];
+  if (g > 0.05) return mix(coast, [46, 204, 113], Math.min(1, (g - 0.05) / 0.4));
+  if (g < -0.05) return mix(coast, [231, 76, 60], Math.min(1, (-g - 0.05) / 0.4));
+  return `rgb(${coast})`;
+}
+const segColor = x => mapColor === 'acc' ? accColor(x.acc) : color(x.spd);
+function recolorTrack() { drawn.forEach(d => { const k = segColor(d.s); d.seg && d.seg.setStyle({color:k}); d.dot.setStyle({fillColor:k}); }); }
 function addMapPoint(s) {
   if (s.lat === undefined) return;
   const prev = drawn.length ? drawn[drawn.length-1].s : null;
-  const c = color(s.spd);
+  const c = segColor(s);
   const seg = prev && s.t - prev.t < 3000 ? L.polyline([[prev.lat,prev.lon],[s.lat,s.lon]], {color:c, weight:5, opacity:.9}).addTo(trackLayer) : null;
   const dot = L.circleMarker([s.lat,s.lon], {radius:3, weight:0, fillColor:c, fillOpacity:1}).addTo(trackLayer)
     .bindPopup(() => `<b>${s.spd.toFixed(1)} km/h</b><br>${new Date(s.t).toLocaleTimeString('th-TH')}<br>ความเร่ง ${(s.acc/G).toFixed(2)} g<br>ระยะ ${Math.round(s.dist)} m`);
@@ -461,7 +483,8 @@ function addMapPoint(s) {
     else maxMarker = L.marker([s.lat, s.lon], {icon:ic, zIndexOffset:1000, interactive:false}).addTo(map);
   }
   lapFeed(s);
-  if (drawn.length % 20 === 0) drawn.forEach(d => { const k = color(d.s.spd); d.seg && d.seg.setStyle({color:k}); d.dot.setStyle({fillColor:k}); });
+  brkFeed(s);
+  if (drawn.length % 20 === 0 && mapColor === 'spd') recolorTrack();
 }
 let gpsErr = null;
 const GPS_MAX_ERR = 50;   // metres; worse fixes are shown but not used for the track
@@ -814,6 +837,7 @@ function finishRun(c) {
              maxPw: Math.max(0, ...seg.map(x => x.pw || 0)), t0: lastCross.t, t1: c.t,
              dist: c.dist - lastCross.dist});
   try { navigator.vibrate && navigator.vibrate(tMode === 'rally' ? [150, 80, 150] : 150); } catch (e) {}
+  setTimeout(drawBrakes, 0);
   $('lapBox').classList.remove('flash'); void $('lapBox').offsetWidth; $('lapBox').classList.add('flash');
   $('tv').classList.add('flash'); setTimeout(() => $('tv').classList.remove('flash'), 3000);
   return true;
@@ -1128,6 +1152,62 @@ setInterval(atvUi, 250);   // keeps "now" speed and standstill state fresh betwe
 $('accCustom').onchange = () => accSetTarget(Math.round(parseFloat($('accCustom').value) * 10) / 10);
 $('btnAccClear').onclick = () => { accRuns = []; accLastMsg = ''; accUi(); };
 accFillTargets(); accUi();
+
+// ---------- braking points (from longitudinal g) ----------
+// A braking zone starts when deceleration passes the chosen g and ends when it eases off
+// (above -0.05 g). Zones shorter than 0.2 s or losing < 3 km/h are ignored as noise.
+let brkZones = [], brkCur = null, brkPre = null, brkLayer = L.layerGroup().addTo(map), brkMin = 0.2;
+try { const v = parseFloat(localStorage.getItem('gsm020brk')); if (v > 0) brkMin = v; } catch (e) {}
+function brkFeed(s) {
+  const g = s.acc / G;
+  if (!brkCur) {
+    // the zone starts where deceleration began (last sample before it), not where it reached the threshold
+    if (g <= -brkMin) { const a = brkPre || s; brkCur = {s0: a, last: s, v0: Math.max(a.spd, s.spd), vMin: s.spd, peak: g}; }
+    else if (g > -0.05) brkPre = s;
+    return;
+  }
+  if (g > -0.05 || s.t - brkCur.last.t > 2000) {           // released, or data gap
+    const z = brkCur; brkCur = null; brkPre = s;
+    const ms = z.last.t - z.s0.t, dv = z.v0 - z.vMin;
+    if (ms < 200 || dv < 3) return;
+    brkZones.push({lat: z.s0.lat, lon: z.s0.lon, t: z.s0.t, v0: z.v0, v1: z.vMin, peak: -z.peak, ms, m: z.last.dist - z.s0.dist});
+    drawBrakes();
+    return;
+  }
+  brkCur.last = s;
+  brkCur.vMin = Math.min(brkCur.vMin, s.spd);
+  brkCur.peak = Math.min(brkCur.peak, g);
+}
+function drawBrakes() {
+  brkLayer.clearLayers();
+  if (!$('brkShow').checked) return;
+  // with lap timing running, show this lap's and the previous lap's brake points (older ones faded out)
+  const lastLap = laps.length ? laps[laps.length - 1] : null;
+  const from = lastLap ? lastLap.t0 : -Infinity, cur = lastCross ? lastCross.t : (lastLap ? lastLap.t1 : -Infinity);
+  brkZones.filter(z => z.t >= from).forEach(z => {
+    const old = z.t < cur;
+    L.marker([z.lat, z.lon], {zIndexOffset: old ? 700 : 800, icon: L.divIcon({className:'', iconSize:null,
+      html:`<div class="brk ${old ? 'old' : ''}">เบรก ${z.v0.toFixed(0)}→${z.v1.toFixed(0)}</div>`})})
+      .bindPopup(`<b>จุดเริ่มเบรก</b><br>ความเร็วเข้า ${z.v0.toFixed(1)} km/h<br>ลดเหลือ ${z.v1.toFixed(1)} km/h<br>` +
+                 `แรงเบรกสูงสุด ${z.peak.toFixed(2)} g<br>ระยะเบรก ${z.m.toFixed(1)} m · ${(z.ms / 1000).toFixed(2)} s<br>` +
+                 `${new Date(z.t).toLocaleTimeString('th-TH')}`)
+      .addTo(brkLayer);
+  });
+}
+$('brkShow').onchange = drawBrakes;
+$('brkG').value = String(brkMin);
+$('brkG').onchange = () => {
+  brkMin = parseFloat($('brkG').value);
+  try { localStorage.setItem('gsm020brk', String(brkMin)); } catch (e) {}
+  // re-detect from the recorded run with the new threshold
+  brkZones = []; brkCur = null; brkPre = null; drawn.forEach(d => brkFeed(d.s)); brkCur = null; drawBrakes();
+};
+document.querySelectorAll('[data-mapc]').forEach(b => b.onclick = () => {
+  mapColor = b.dataset.mapc;
+  document.querySelectorAll('[data-mapc]').forEach(x => x.classList.toggle('sel', x === b));
+  $('lgSpd').hidden = mapColor !== 'spd'; $('lgAcc').hidden = mapColor !== 'acc';
+  recolorTrack();
+});
 
 // ---------- reference lap + deltas ----------
 let refMode = 'best';

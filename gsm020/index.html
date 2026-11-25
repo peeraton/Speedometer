@@ -54,6 +54,24 @@
   .flash{animation:flash 1s ease-out}
   @keyframes flash{0%{background:#2ecc7155}100%{background:transparent}}
   @media (prefers-reduced-motion:reduce){.flash{animation:none}}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .seg button{border:0;border-radius:0;min-height:40px;padding:8px 12px;background:var(--card)}
+  .seg button.sel{background:var(--acc);color:#fff;font-weight:700}
+  #tv{position:fixed;inset:0;z-index:5000;background:#05070a;display:none;flex-direction:column;padding:max(12px,env(safe-area-inset-top)) 16px 16px}
+  #tv.show{display:flex}
+  #tv .top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  #tv .lapno{font-size:20px;font-weight:700;flex:1}
+  #tv .close{font-size:22px;min-width:48px}
+  #tv .main{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:4px}
+  #tv .cur{font-size:clamp(64px,22vw,200px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+  #tv .live{font-size:clamp(40px,13vw,120px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1.05}
+  #tv .lbl{font-size:14px;color:var(--mut)}
+  #tv .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  #tv .box{background:#11161d;border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
+  #tv .box b{display:block;font-size:clamp(22px,7vw,44px);font-variant-numeric:tabular-nums}
+  #tv.flash .cur{color:var(--ok)}
+  .neg{color:var(--ok)} .pos{color:#ff6b6b}
+  @media (orientation:landscape){#tv .main{flex-direction:row;gap:5vw}}
   #mapInfo{padding:4px 12px 0;font-size:12px;color:var(--warn)}
   .note{font-size:12px;color:var(--mut);line-height:1.5;padding:0 12px}
 </style>
@@ -96,9 +114,13 @@
       <option value="12">รัศมี 12 m</option><option value="20">รัศมี 20 m</option>
     </select>
     <button id="btnLapClear">ล้างรอบ</button>
+    <button id="btnTv">⏱ หน้าจอจับเวลา</button>
+  </div>
+  <div class="btns" style="align-items:center"><span class="kv">เทียบกับ</span>
+    <div class="seg" role="group" aria-label="เทียบกับ"><button data-ref="best">รอบดีที่สุด</button><button data-ref="prev">รอบที่แล้ว</button></div>
   </div>
   <div id="lapInfo"></div>
-  <table class="laps" id="lapTable" hidden><thead><tr><th>รอบ</th><th>เวลา</th><th>ต่างจากดีสุด</th><th>สูงสุด</th><th>เฉลี่ย</th></tr></thead><tbody></tbody></table>
+  <table class="laps" id="lapTable" hidden><thead><tr><th>รอบ</th><th>เวลา</th><th id="thDelta">ต่างจากดีสุด</th><th>สูงสุด</th><th>เฉลี่ย</th></tr></thead><tbody></tbody></table>
 </div>
 
 <div class="sec"><span>ความเร็วตามเวลา</span><span id="chartInfo"></span></div>
@@ -109,6 +131,23 @@
 <div id="map"></div>
 <div class="legend"><span>ช้า</span><div class="grad"></div><span>เร็ว (<span id="lgMax">0</span> km/h)</span></div>
 <p class="note">ตัวเลขบนเส้นทางคือความเร็ว (km/h) ทุก ~25 m ป้ายขอบแดงคือจุดที่เร็วที่สุด GSM020 ไม่ส่งพิกัด แผนที่ใช้ตำแหน่งจาก GPS มือถือ แล้วเติมจุดระหว่างตำแหน่งด้วยระยะทางจาก GSM020 ทุกค่าความเร็วจึงมีจุดของตัวเอง (เส้นทางจะขึ้นช้ากว่าความจริงประมาณ 1–2 วินาที) ใช้ได้เมื่อมือถือเคลื่อนที่ไปกับรถ แตะเส้นทางเพื่อดูความเร็ว ณ จุดนั้น</p>
+
+<div id="tv" role="dialog" aria-label="หน้าจอจับเวลา">
+  <div class="top">
+    <div class="lapno" id="tvLapNo">รอบที่ 1</div>
+    <div class="seg" role="group" aria-label="เทียบกับ"><button data-ref="best">ดีที่สุด</button><button data-ref="prev">รอบที่แล้ว</button></div>
+    <button class="close" id="tvClose" aria-label="ปิด">✕</button>
+  </div>
+  <div class="main">
+    <div><div class="lbl">เวลารอบนี้</div><div class="cur" id="tvCur">--:--.-</div></div>
+    <div><div class="lbl" id="tvLiveLbl">ต่างจากรอบดีที่สุด (ตอนนี้)</div><div class="live" id="tvLive">-</div></div>
+  </div>
+  <div class="grid">
+    <div class="box"><span class="lbl">รอบล่าสุด</span><b id="tvLast">-</b><span id="tvLastD" class="lbl"></span></div>
+    <div class="box"><span class="lbl">ดีที่สุด</span><b id="tvBest" class="neg">-</b><span id="tvBestN" class="lbl"></span></div>
+    <div class="box"><span class="lbl">ความเร็ว</span><b id="tvSpd">0</b><span class="lbl">km/h</span></div>
+  </div>
+</div>
 
 <details>
   <summary>แพ็กเก็ตดิบ</summary>
@@ -527,12 +566,14 @@ function onCross(c) {
   if (!lastCross) { lastCross = c; lapUi('เริ่มจับเวลารอบแรกแล้ว'); return; }
   if (c.dist - lastCross.dist < MIN_LAP_M || c.t - lastCross.t < MIN_LAP_MS) return;  // jitter at the line
   const seg = samples.filter(x => x.t >= lastCross.t && x.t <= c.t);
-  laps.push({n: laps.length + 1, ms: c.t - lastCross.t,
+  const prof = seg.map(x => [x.dist - lastCross.dist, x.t - lastCross.t]);   // [metres into lap, ms into lap]
+  laps.push({n: laps.length + 1, ms: c.t - lastCross.t, prof,
              max: Math.max(...seg.map(x => x.spd)), avg: seg.reduce((a, x) => a + x.spd, 0) / Math.max(1, seg.length),
              dist: c.dist - lastCross.dist});
   lastCross = c;
   try { navigator.vibrate && navigator.vibrate(150); } catch (e) {}
   $('lapBox').classList.remove('flash'); void $('lapBox').offsetWidth; $('lapBox').classList.add('flash');
+  $('tv').classList.add('flash'); setTimeout(() => $('tv').classList.remove('flash'), 3000);
   lapUi();
 }
 function lapUi(note) {
@@ -542,10 +583,14 @@ function lapUi(note) {
   $('lapN').textContent = laps.length;
   const tb = $('lapTable');
   tb.hidden = !laps.length;
+  $('thDelta').textContent = refMode === 'best' ? 'ต่างจากดีสุด' : 'ต่างจากรอบก่อน';
   tb.tBodies[0].innerHTML = laps.slice().reverse().map(l => {
-    const dlt = l.ms - best;
+    let cell;
+    if (refMode === 'best') cell = l.ms === best ? 'ดีที่สุด' : fmtDelta(l.ms - best);
+    else cell = l.n === 1 ? '-' : fmtDelta(l.ms - laps[l.n - 2].ms);
+    const cls = cell.startsWith('-') && cell !== '-' ? 'neg' : (cell.startsWith('+') ? 'pos' : '');
     return `<tr class="${l.ms === best ? 'best' : ''}"><td>${l.n}</td><td>${fmtLap(l.ms)}</td>` +
-           `<td>${l.ms === best ? 'ดีที่สุด' : '+' + (dlt/1000).toFixed(1) + ' s'}</td>` +
+           `<td class="${cls}">${cell}</td>` +
            `<td>${l.max.toFixed(1)}</td><td>${l.avg.toFixed(1)}</td></tr>`;
   }).join('');
   let info = note || '';
@@ -570,7 +615,81 @@ setInterval(() => {
   // running time: lastCross is about 1-2 s late (positions lag), but its timestamp is exact
   $('lapCur').textContent = lastCross ? fmtLap(Date.now() - lastCross.t) : '--:--.-';
 }, 100);
-lapUi();
+
+// ---------- reference lap + deltas ----------
+let refMode = 'best';
+try { refMode = localStorage.getItem('gsm020ref') === 'prev' ? 'prev' : 'best'; } catch (e) {}
+const fmtDelta = ms => (ms < 0 ? '-' : '+') + (Math.abs(ms) / 1000).toFixed(ms != null && Math.abs(ms) < 10000 ? 2 : 1) + ' s';
+function refLap() {
+  if (!laps.length) return null;
+  if (refMode === 'prev') return laps[laps.length - 1];
+  return laps.reduce((a, l) => l.ms < a.ms ? l : a);
+}
+function timeAtDist(lap, x) {              // ms into the reference lap when it had covered x metres
+  const p = lap.prof;
+  if (!p.length || x > p[p.length-1][0]) return null;
+  for (let i = 1; i < p.length; i++) {
+    if (p[i][0] >= x) {
+      const [d0, t0] = p[i-1], [d1, t1] = p[i];
+      return d1 > d0 ? t0 + (t1 - t0) * (x - d0) / (d1 - d0) : t1;
+    }
+  }
+  return null;
+}
+function liveDelta() {                     // + slower / - faster than the reference at the same distance
+  const r = refLap(), s = samples[samples.length - 1];
+  if (!r || !lastCross || !s || s.t < lastCross.t) return null;
+  const tr = timeAtDist(r, s.dist - lastCross.dist);
+  return tr == null ? null : (s.t - lastCross.t) - tr;
+}
+function setRef(m) {
+  refMode = m;
+  try { localStorage.setItem('gsm020ref', m); } catch (e) {}
+  document.querySelectorAll('.seg [data-ref]').forEach(b => b.classList.toggle('sel', b.dataset.ref === m));
+  $('tvLiveLbl').textContent = m === 'best' ? 'ต่างจากรอบดีที่สุด (ตอนนี้)' : 'ต่างจากรอบที่แล้ว (ตอนนี้)';
+  lapUi();
+}
+document.querySelectorAll('.seg [data-ref]').forEach(b => b.onclick = () => setRef(b.dataset.ref));
+
+// ---------- full-screen timer ----------
+let wakeLock = null;
+$('btnTv').onclick = async () => {
+  $('tv').classList.add('show');
+  try { await document.documentElement.requestFullscreen(); } catch (e) {}
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+};
+$('tvClose').onclick = async () => {
+  $('tv').classList.remove('show');
+  try { if (document.fullscreenElement) await document.exitFullscreen(); } catch (e) {}
+  try { wakeLock && await wakeLock.release(); } catch (e) {}
+  wakeLock = null;
+};
+function setDeltaEl(el, ms) {
+  el.textContent = ms == null ? '-' : fmtDelta(ms);
+  el.classList.toggle('neg', ms != null && ms < 0);
+  el.classList.toggle('pos', ms != null && ms > 0);
+}
+function tvTick() {
+  if (!$('tv').classList.contains('show')) return;
+  const best = laps.length ? laps.reduce((a, l) => l.ms < a.ms ? l : a) : null;
+  const last = laps[laps.length - 1];
+  $('tvLapNo').textContent = lastCross ? `รอบที่ ${laps.length + 1}` : 'รอผ่านจุดสตาร์ท';
+  $('tvCur').textContent = $('lapCur').textContent;
+  setDeltaEl($('tvLive'), liveDelta());
+  $('tvLast').textContent = last ? fmtLap(last.ms) : '-';
+  // last lap compared with the selected reference: best lap, or the lap before it
+  let d = null;
+  if (last && refMode === 'best' && best !== last) d = last.ms - best.ms;
+  if (last && refMode === 'prev' && laps.length > 1) d = last.ms - laps[laps.length - 2].ms;
+  $('tvLastD').textContent = last ? (d == null ? (best === last ? 'ดีที่สุด' : '') : fmtDelta(d)) : '';
+  $('tvLastD').className = 'lbl ' + (d == null ? '' : d < 0 ? 'neg' : 'pos');
+  $('tvBest').textContent = best ? fmtLap(best.ms) : '-';
+  $('tvBestN').textContent = best ? `รอบที่ ${best.n}` : '';
+  const s = samples[samples.length - 1];
+  $('tvSpd').textContent = s ? s.spd.toFixed(0) : '0';
+}
+setInterval(tvTick, 100);
+setRef(refMode);
 
 drawChart();
 }

@@ -135,18 +135,17 @@
   .wheelw .wtxt,.wheelw .wus{font:800 14px system-ui,sans-serif;color:#fff;background:rgba(5,7,10,.78);border-radius:8px;padding:2px 8px;display:inline-block;margin-top:3px;white-space:nowrap}
   .full .wheelw .wtxt{font-size:20px}
   .wheelw #wheelG{transition:transform 60ms linear}
+  .setuph{margin:22px 12px 4px;font-size:18px;border-top:1px solid var(--line);padding-top:14px}
   #mapInfo{padding:4px 12px 0;font-size:12px;color:var(--warn)}
   .note{font-size:12px;color:var(--mut);line-height:1.5;padding:0 12px}
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-22</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-23</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
-  <div class="seg" role="group" aria-label="แหล่งข้อมูล" style="flex-basis:100%;width:max-content"><button data-src="gsm">GSM020</button><button data-src="phone">GPS มือถืออย่างเดียว</button></div>
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
   <button id="btnClear">เริ่มรอบใหม่</button>
-  <button id="btnCsv">CSV</button>
   <button id="btnDemo">โหมดทดลอง</button>
 </div>
 <div id="msg"></div>
@@ -170,55 +169,41 @@
   <div class="st"><b id="sMaxPw">0</b><span>กำลังสูงสุด W <span id="sMaxPwHp"></span></span></div>
   <div class="st" style="display:flex;align-items:center;justify-content:center"><button id="btnPwSet" style="min-height:40px;padding:6px 10px;font-size:13px">ตั้งค่ากำลัง</button></div>
 </div>
-<details id="pwBox" style="margin-top:0">
-  <summary>ตั้งค่าการคำนวณกำลัง (Virtual Power)</summary>
-  <div class="note" style="padding:6px 0 0">กำลังคำนวณจากความเร็วและความเร่งของ GSM020: กำลัง = ความเร็ว × (น้ำหนัก × ความเร่ง + แรงต้านล้อ + แรงต้านอากาศ) เป็นกำลังที่ส่งถึงพื้นถนนโดยประมาณ ไม่ใช่ค่าที่วัดจากมอเตอร์ ใส่น้ำหนักรถให้ตรงที่สุดเพราะมีผลมากที่สุด</div>
-  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px">
-    <label class="kv">น้ำหนักรถ (kg)<input id="pwMass" type="number" step="0.1" min="0.1" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
-    <label class="kv">CdA (m²)<input id="pwCdA" type="number" step="0.001" min="0" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
-    <label class="kv">Crr<input id="pwCrr" type="number" step="0.005" min="0" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
-  </div>
-  <div class="note" style="padding:6px 0 0">ค่าเริ่มต้นเหมาะกับรถ RC 1/10 (2.0 kg, CdA 0.016, Crr 0.02) รถ 1/8 ลองน้ำหนัก 3.5–4.5 kg, CdA 0.03 · แก้แล้วคำนวณใหม่ทั้งรอบทันที</div>
-</details>
 
-<div class="lap" id="stBox">
-  <b style="font-size:15px">พวงมาลัย · อันเดอร์/โอเวอร์สเตียร์ <span class="kv" style="font-weight:400">(มือถือติดที่พวงมาลัย)</span></b>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="lap" id="lapBox">
+  <div class="btns" style="margin-top:0;align-items:center"><b style="font-size:15px">จับเวลาต่อรอบ</b><span class="kv" id="lapModeLbl"></span><button id="btnGoPts" style="margin-left:auto;min-height:36px;padding:6px 10px;font-size:13px">⚙️ ตั้งจุดจับเวลา</button></div>
   <div class="row" style="margin-top:8px">
-    <div><div class="kv">มุมพวงมาลัย</div><div class="cur" id="stWheel" style="font-size:clamp(30px,9vw,52px)">-</div></div>
-    <div class="kv">มุมล้อ<b id="stRoad">-</b></div>
-    <div class="kv">แรง G ด้านข้าง<b id="stAy">-</b></div>
+    <div><div class="kv" id="lapCurLbl">รอบปัจจุบัน</div><div class="cur" id="lapCur">--:--.--</div></div>
+    <div class="kv" style="margin-left:auto"><span id="lapLastLbl">รอบล่าสุด</span><b id="lapLast">-</b></div>
+    <div class="kv">ดีที่สุด<b id="lapBest" style="color:var(--ok)">-</b></div>
+    <div class="kv" id="lapTheoBox" hidden>ดีสุดตามทฤษฎี<b id="lapTheo" style="color:#b57cff">-</b></div>
+    <div class="kv"><span id="lapNLbl">รอบที่</span><b id="lapN">0</b></div>
   </div>
-  <div style="position:relative;height:14px;margin:8px 0;border-radius:7px;background:linear-gradient(90deg,#2a313b,#181d24 50%,#2a313b)">
-    <div style="position:absolute;left:50%;top:-3px;width:2px;height:20px;background:var(--mut)"></div>
-    <div id="stBar" style="position:absolute;left:50%;top:-4px;width:14px;height:22px;margin-left:-7px;border-radius:5px;background:var(--acc)"></div>
-  </div>
-  <div class="kv">ผลวิเคราะห์โค้งล่าสุด</div>
-  <div id="stUs" style="font-size:clamp(22px,6vw,34px);font-weight:800">-</div>
-  <div class="kv" id="stStatus" style="margin-top:6px;color:var(--warn)"></div>
-  <div class="btns">
-    <button class="pri" id="stBtn">▶ เริ่มเซ็นเซอร์พวงมาลัย</button>
-    <button id="stCalZero">① ตั้งตรงแล้วกด ตั้งศูนย์</button>
-    <button id="stCalLeft">② หมุนซ้าย 90°</button>
-  </div>
-  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px">
-    <label class="kv">ฐานล้อ (m)<input id="stL" type="number" step="0.01" min="0.5" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
-    <label class="kv">อัตราทดพวงมาลัย (หมุนพวงมาลัย : ล้อ)<input id="stR" type="number" step="0.1" min="1" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
-  </div>
-  <div class="kv" style="margin-top:6px">ต้องเชื่อมต่อ GSM020 (หรือใช้ GPS มือถือ) และเปิด GPS มือถือด้วย เพื่อรู้ว่ารถเลี้ยวจริงเท่าไร สีเส้นทาง "อันเดอร์/โอเวอร์" บนแผนที่: ฟ้า = อันเดอร์สเตียร์, แดง = โอเวอร์สเตียร์, เทา = ทางตรง/สมดุล</div>
-</div>
-
-<div class="lap" id="sessBox">
-  <b style="font-size:15px">บันทึก · เปิดดูย้อนหลัง</b>
+  <div class="chips" id="secNow"></div>
   <div class="btns" style="align-items:center">
-    <input id="sessName" type="text" placeholder="ตั้งชื่อ (ไม่ใส่ก็ได้)" style="flex:1;min-width:10em;font-size:16px;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);min-height:44px">
-    <button class="pri" id="btnSave">💾 บันทึก</button>
-    <button id="btnSaveFile">⬇ ดาวน์โหลดเป็นไฟล์</button>
-    <button id="btnOpenFile">📂 เปิดไฟล์</button>
-    <input type="file" id="sessFile" accept=".json,application/json" hidden>
+    <button id="btnLapClear">ล้างเวลา</button>
+    <button id="btnTv">⏱ หน้าจอจับเวลา</button>
+    <span class="kv">เทียบกับ</span>
+    <div class="seg" role="group" aria-label="เทียบกับ"><button data-ref="best">ดีที่สุด</button><button data-ref="prev">ครั้งที่แล้ว</button></div>
   </div>
-  <div class="kv" id="sessInfo" style="margin-top:6px;color:var(--warn)"></div>
-  <div id="sessList" style="margin-top:8px"></div>
-  <div class="kv" style="margin-top:6px">ข้อมูลเก็บในเบราว์เซอร์ของมือถือเครื่องนี้ และบันทึกอัตโนมัติทุก 30 วินาทีระหว่างวิ่ง ถ้าจะเก็บถาวรหรือส่งต่อให้คนอื่น ให้ดาวน์โหลดเป็นไฟล์</div>
+  <div id="lapInfo"></div>
+  <div style="overflow-x:auto"><table class="laps" id="lapTable" hidden><thead><tr id="lapHead"></tr></thead><tbody></tbody></table></div>
 </div>
 
 <div class="lap" id="accBox">
@@ -240,55 +225,6 @@
   <div class="chips" id="accSplits"></div>
   <div style="overflow-x:auto"><table class="laps" id="accTable" hidden><thead><tr id="accHead"></tr></thead><tbody></tbody></table></div>
 </div>
-
-<div class="lap" id="lapBox">
-  <div class="btns" style="margin-top:0;align-items:center"><span class="kv">โหมด</span>
-    <div class="seg" role="group" aria-label="โหมดจับเวลา" style="flex-wrap:wrap"><button data-tmode="simple">เซอร์กิต</button><button data-tmode="circuit">เซอร์กิต+เซกเตอร์</button><button data-tmode="rally">แรลลี่</button></div>
-  </div>
-  <div class="row" style="margin-top:8px">
-    <div><div class="kv" id="lapCurLbl">รอบปัจจุบัน</div><div class="cur" id="lapCur">--:--.--</div></div>
-    <div class="kv" style="margin-left:auto"><span id="lapLastLbl">รอบล่าสุด</span><b id="lapLast">-</b></div>
-    <div class="kv">ดีที่สุด<b id="lapBest" style="color:var(--ok)">-</b></div>
-    <div class="kv" id="lapTheoBox" hidden>ดีสุดตามทฤษฎี<b id="lapTheo" style="color:#b57cff">-</b></div>
-    <div class="kv"><span id="lapNLbl">รอบที่</span><b id="lapN">0</b></div>
-  </div>
-  <div class="chips" id="secNow"></div>
-  <div class="btns">
-    <button class="pri" id="btnAddPt">ตั้งสตาร์ท/เส้นชัยตรงนี้</button>
-    <button class="pri" id="btnFinish" hidden>ตั้งเส้นชัยตรงนี้</button>
-    <button id="btnUndoPt">ลบจุดล่าสุด</button>
-    <button id="btnClearPts">ล้างจุด</button>
-    <select id="lapR" aria-label="รัศมีจุดจับเวลา">
-      <option value="5">รัศมี 5 m</option><option value="8" selected>รัศมี 8 m</option>
-      <option value="12">รัศมี 12 m</option><option value="20">รัศมี 20 m</option>
-    </select>
-  </div>
-  <div class="kv" id="ptList" style="margin-top:6px"></div>
-  <div class="btns" style="align-items:center">
-    <button id="btnLapClear">ล้างเวลา</button>
-    <button id="btnTv">⏱ หน้าจอจับเวลา</button>
-    <button id="btnEdit">✏️ แก้ไขจุดบนแผนที่</button>
-    <span class="kv">เทียบกับ</span>
-    <div class="seg" role="group" aria-label="เทียบกับ"><button data-ref="best">ดีที่สุด</button><button data-ref="prev">ครั้งที่แล้ว</button></div>
-  </div>
-  <div id="lapInfo"></div>
-  <div style="overflow-x:auto"><table class="laps" id="lapTable" hidden><thead><tr id="lapHead"></tr></thead><tbody></tbody></table></div>
-</div>
-
-<div class="lap" id="liveBox">
-  <div class="row"><b style="font-size:15px">ถ่ายทอดสดให้เครื่องอื่นดู</b><span class="kv" id="liveStatus" style="margin-left:auto">ปิดอยู่</span></div>
-  <div class="btns">
-    <button id="btnLive">● เริ่มถ่ายทอดสด</button>
-    <button id="btnLiveShare">ส่งลิงก์</button>
-    <button id="btnLiveCopy">คัดลอกลิงก์</button>
-    <button id="btnLiveRoom">เปลี่ยนรหัสห้อง</button>
-  </div>
-  <div class="link" id="liveLink"></div>
-  <div class="kv" style="margin-top:6px">คนที่มีลิงก์จะเห็นความเร็ว เส้นทาง ตำแหน่ง และเวลาต่อรอบแบบสด เปลี่ยนรหัสห้องเมื่อไม่อยากให้ลิงก์เดิมใช้ได้</div>
-</div>
-
-<div class="sec"><div class="seg" role="group" aria-label="กราฟ"><button data-chart="spd" class="sel">ความเร็ว</button><button data-chart="pw">กำลัง</button></div><span id="chartInfo"></span></div>
-<div class="fig"><canvas id="chart"></canvas></div>
 
 <div class="sec" style="flex-wrap:wrap;gap:6px">
   <div class="seg" role="group" aria-label="สีเส้นทาง"><button data-mapc="spd" class="sel">สีตามความเร็ว</button><button data-mapc="acc">สีเร่ง/เบรก</button><button data-mapc="us">สีอันเดอร์/โอเวอร์</button></div>
@@ -331,6 +267,103 @@
 <div class="legend" id="lgUs" hidden><span style="color:#3498ff">■ อันเดอร์สเตียร์</span><span style="color:#8a96a3">■ สมดุล/ทางตรง</span><span style="color:#e74c3c">■ โอเวอร์สเตียร์</span><span style="margin-left:auto">เข้มสุดที่ ±3° มุมล้อ</span></div>
 <div class="legend" id="lgAcc" hidden><span style="color:#2ecc71">■ เร่ง</span><span style="color:#c9b458">■ ปล่อยคันเร่ง</span><span style="color:#e74c3c">■ เบรก</span><span style="margin-left:auto">เข้มตามแรง G</span></div>
 <p class="note">ตัวเลขบนเส้นทางคือความเร็ว (km/h) ทุก ~25 m ป้ายขอบแดงคือจุดที่เร็วที่สุด GSM020 ไม่ส่งพิกัด แผนที่ใช้ตำแหน่งจาก GPS มือถือ แล้วเติมจุดระหว่างตำแหน่งด้วยระยะทางจาก GSM020 ทุกค่าความเร็วจึงมีจุดของตัวเอง (เส้นทางจะขึ้นช้ากว่าความจริงประมาณ 1–2 วินาที) ใช้ได้เมื่อมือถือเคลื่อนที่ไปกับรถ แตะเส้นทางเพื่อดูความเร็ว ณ จุดนั้น</p>
+
+<div class="sec"><div class="seg" role="group" aria-label="กราฟ"><button data-chart="spd" class="sel">ความเร็ว</button><button data-chart="pw">กำลัง</button></div><span id="chartInfo"></span></div>
+<div class="fig"><canvas id="chart"></canvas></div>
+
+<h2 class="setuph" id="setupH">⚙️ ตั้งค่า</h2>
+
+<div class="lap" id="srcBox">
+  <b style="font-size:15px">แหล่งข้อมูล</b>
+  <div class="btns" style="align-items:center">
+  <div class="seg" role="group" aria-label="แหล่งข้อมูล"><button data-src="gsm">GSM020</button><button data-src="phone">GPS มือถืออย่างเดียว</button></div>
+  <button id="btnCsv">⬇ ส่งออก CSV</button>
+  </div>
+</div>
+
+<div class="lap" id="ptsBox">
+  <b style="font-size:15px">จุดจับเวลา (สตาร์ท · เซกเตอร์ · เส้นชัย)</b>
+  <div class="btns" style="align-items:center"><span class="kv">โหมด</span>
+    <div class="seg" role="group" aria-label="โหมดจับเวลา" style="flex-wrap:wrap"><button data-tmode="simple">เซอร์กิต</button><button data-tmode="circuit">เซอร์กิต+เซกเตอร์</button><button data-tmode="rally">แรลลี่</button></div>
+  </div>
+  <div class="btns">
+    <button class="pri" id="btnAddPt">ตั้งสตาร์ท/เส้นชัยตรงนี้</button>
+    <button class="pri" id="btnFinish" hidden>ตั้งเส้นชัยตรงนี้</button>
+    <button id="btnUndoPt">ลบจุดล่าสุด</button>
+    <button id="btnClearPts">ล้างจุด</button>
+    <select id="lapR" aria-label="รัศมีจุดจับเวลา">
+      <option value="5">รัศมี 5 m</option><option value="8" selected>รัศมี 8 m</option>
+      <option value="12">รัศมี 12 m</option><option value="20">รัศมี 20 m</option>
+    </select>
+  </div>
+  <div class="kv" id="ptList" style="margin-top:6px"></div>
+  <div class="btns">
+    <button id="btnEdit">✏️ แก้ไขจุดบนแผนที่</button>
+  </div>
+</div>
+
+<div class="lap" id="stBox">
+  <b style="font-size:15px">พวงมาลัย · อันเดอร์/โอเวอร์สเตียร์ <span class="kv" style="font-weight:400">(มือถือติดที่พวงมาลัย)</span></b>
+  <div class="row" style="margin-top:8px">
+    <div><div class="kv">มุมพวงมาลัย</div><div class="cur" id="stWheel" style="font-size:clamp(30px,9vw,52px)">-</div></div>
+    <div class="kv">มุมล้อ<b id="stRoad">-</b></div>
+    <div class="kv">แรง G ด้านข้าง<b id="stAy">-</b></div>
+  </div>
+  <div style="position:relative;height:14px;margin:8px 0;border-radius:7px;background:linear-gradient(90deg,#2a313b,#181d24 50%,#2a313b)">
+    <div style="position:absolute;left:50%;top:-3px;width:2px;height:20px;background:var(--mut)"></div>
+    <div id="stBar" style="position:absolute;left:50%;top:-4px;width:14px;height:22px;margin-left:-7px;border-radius:5px;background:var(--acc)"></div>
+  </div>
+  <div class="kv">ผลวิเคราะห์โค้งล่าสุด</div>
+  <div id="stUs" style="font-size:clamp(22px,6vw,34px);font-weight:800">-</div>
+  <div class="kv" id="stStatus" style="margin-top:6px;color:var(--warn)"></div>
+  <div class="btns">
+    <button class="pri" id="stBtn">▶ เริ่มเซ็นเซอร์พวงมาลัย</button>
+    <button id="stCalZero">① ตั้งตรงแล้วกด ตั้งศูนย์</button>
+    <button id="stCalLeft">② หมุนซ้าย 90°</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px">
+    <label class="kv">ฐานล้อ (m)<input id="stL" type="number" step="0.01" min="0.5" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
+    <label class="kv">อัตราทดพวงมาลัย (หมุนพวงมาลัย : ล้อ)<input id="stR" type="number" step="0.1" min="1" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
+  </div>
+  <div class="kv" style="margin-top:6px">ต้องเชื่อมต่อ GSM020 (หรือใช้ GPS มือถือ) และเปิด GPS มือถือด้วย เพื่อรู้ว่ารถเลี้ยวจริงเท่าไร สีเส้นทาง "อันเดอร์/โอเวอร์" บนแผนที่: ฟ้า = อันเดอร์สเตียร์, แดง = โอเวอร์สเตียร์, เทา = ทางตรง/สมดุล</div>
+</div>
+
+<div class="lap"><details id="pwBox" style="margin:0;border:0;padding:0">
+  <summary>ตั้งค่าการคำนวณกำลัง (Virtual Power)</summary>
+  <div class="note" style="padding:6px 0 0">กำลังคำนวณจากความเร็วและความเร่งของ GSM020: กำลัง = ความเร็ว × (น้ำหนัก × ความเร่ง + แรงต้านล้อ + แรงต้านอากาศ) เป็นกำลังที่ส่งถึงพื้นถนนโดยประมาณ ไม่ใช่ค่าที่วัดจากมอเตอร์ ใส่น้ำหนักรถให้ตรงที่สุดเพราะมีผลมากที่สุด</div>
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px">
+    <label class="kv">น้ำหนักรถ (kg)<input id="pwMass" type="number" step="0.1" min="0.1" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
+    <label class="kv">CdA (m²)<input id="pwCdA" type="number" step="0.001" min="0" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
+    <label class="kv">Crr<input id="pwCrr" type="number" step="0.005" min="0" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
+  </div>
+  <div class="note" style="padding:6px 0 0">ค่าเริ่มต้นเหมาะกับรถ RC 1/10 (2.0 kg, CdA 0.016, Crr 0.02) รถ 1/8 ลองน้ำหนัก 3.5–4.5 kg, CdA 0.03 · แก้แล้วคำนวณใหม่ทั้งรอบทันที</div>
+</details></div>
+
+<div class="lap" id="liveBox">
+  <div class="row"><b style="font-size:15px">ถ่ายทอดสดให้เครื่องอื่นดู</b><span class="kv" id="liveStatus" style="margin-left:auto">ปิดอยู่</span></div>
+  <div class="btns">
+    <button id="btnLive">● เริ่มถ่ายทอดสด</button>
+    <button id="btnLiveShare">ส่งลิงก์</button>
+    <button id="btnLiveCopy">คัดลอกลิงก์</button>
+    <button id="btnLiveRoom">เปลี่ยนรหัสห้อง</button>
+  </div>
+  <div class="link" id="liveLink"></div>
+  <div class="kv" style="margin-top:6px">คนที่มีลิงก์จะเห็นความเร็ว เส้นทาง ตำแหน่ง และเวลาต่อรอบแบบสด เปลี่ยนรหัสห้องเมื่อไม่อยากให้ลิงก์เดิมใช้ได้</div>
+</div>
+
+<div class="lap" id="sessBox">
+  <b style="font-size:15px">บันทึก · เปิดดูย้อนหลัง</b>
+  <div class="btns" style="align-items:center">
+    <input id="sessName" type="text" placeholder="ตั้งชื่อ (ไม่ใส่ก็ได้)" style="flex:1;min-width:10em;font-size:16px;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);min-height:44px">
+    <button class="pri" id="btnSave">💾 บันทึก</button>
+    <button id="btnSaveFile">⬇ ดาวน์โหลดเป็นไฟล์</button>
+    <button id="btnOpenFile">📂 เปิดไฟล์</button>
+    <input type="file" id="sessFile" accept=".json,application/json" hidden>
+  </div>
+  <div class="kv" id="sessInfo" style="margin-top:6px;color:var(--warn)"></div>
+  <div id="sessList" style="margin-top:8px"></div>
+  <div class="kv" style="margin-top:6px">ข้อมูลเก็บในเบราว์เซอร์ของมือถือเครื่องนี้ และบันทึกอัตโนมัติทุก 30 วินาทีระหว่างวิ่ง ถ้าจะเก็บถาวรหรือส่งต่อให้คนอื่น ให้ดาวน์โหลดเป็นไฟล์</div>
+</div>
 
 <div id="atv" role="dialog" aria-label="หน้าจอวัดอัตราเร่ง">
   <div class="top">
@@ -1209,15 +1242,16 @@ function lapUi(note) {
   let info = note || '';
   if (!info) {
     if (!tPts.length) info = tMode === 'rally'
-      ? 'ไปที่จุดออกสตาร์ทแล้วกด "ตั้งจุดสตาร์ทตรงนี้" จากนั้นไปตั้งจุดแบ่ง (ถ้ามี) และเส้นชัย หรือกดค้างบนแผนที่'
+      ? 'ยังไม่มีจุดจับเวลา: กด "⚙️ ตั้งจุดจับเวลา" แล้วตั้งจุดสตาร์ท จุดแบ่ง และเส้นชัย (หรือกดค้างบนแผนที่)'
       : tMode === 'simple'
-      ? 'วางรถที่เส้นสตาร์ทแล้วกด "ตั้งจุดสตาร์ทตรงนี้" (หรือกดค้างบนแผนที่ตรงเส้นสตาร์ท)'
-      : 'วางรถที่เส้นสตาร์ทแล้วกด "ตั้งสตาร์ท/เส้นชัยตรงนี้" เพิ่มจุดแบ่งเซกเตอร์ได้ภายหลัง หรือกดค้างบนแผนที่';
+      ? 'ยังไม่มีจุดสตาร์ท: กด "⚙️ ตั้งจุดจับเวลา" แล้วกด "ตั้งจุดสตาร์ทตรงนี้" ที่เส้นสตาร์ท (หรือกดค้างบนแผนที่)'
+      : 'ยังไม่มีจุดจับเวลา: กด "⚙️ ตั้งจุดจับเวลา" แล้วตั้งสตาร์ท/เส้นชัย และจุดแบ่งเซกเตอร์ (หรือกดค้างบนแผนที่)';
     else if (tMode === 'rally' && tPts.length < 2) info = 'ต้องมีเส้นชัยด้วย: ไปที่เส้นชัยแล้วกด "ตั้งเส้นชัยตรงนี้"';
     else if (!demoTimer && gpsWatch === null) info = 'ต้องเปิด GPS มือถือจึงจะจับเวลาได้';
     else if (!lastCross) info = tMode === 'rally' ? 'พร้อมแล้ว จะเริ่มจับเวลาเมื่อรถออกจากจุดสตาร์ท' : 'พร้อมแล้ว จะเริ่มจับเวลาเมื่อรถผ่านเส้นสตาร์ทครั้งแรก';
   }
   $('lapInfo').textContent = info;
+  $('lapModeLbl').textContent = '· ' + ({simple:'เซอร์กิต', circuit:'เซอร์กิต+เซกเตอร์', rally:'แรลลี่'})[tMode];
   mapViewOptions();
 }
 function addHere(asFinish) {
@@ -1228,6 +1262,7 @@ function addHere(asFinish) {
   lapUi(gps.acc > 15 ? `บันทึกแล้ว แต่ตำแหน่งคลาด ±${Math.round(gps.acc)} m รอให้ต่ำกว่า 15 m แล้วตั้งใหม่จะแม่นกว่า` : 'บันทึกจุดแล้ว');
 }
 $('btnAddPt').onclick = () => addHere(false);
+$('btnGoPts').onclick = () => $('ptsBox').scrollIntoView({behavior:'smooth', block:'start'});
 $('btnFinish').onclick = () => addHere(true);
 $('btnUndoPt').onclick = () => { if (!tPts.length) return; tPts.pop(); savePts(); laps = []; resetRunState(); drawPts(); lapUi('ลบจุดล่าสุดแล้ว'); editHint(); };
 $('btnClearPts').onclick = () => { tPts = []; savePts(); laps = []; resetRunState(); drawPts(); lapUi('ล้างจุดทั้งหมดแล้ว'); editHint(); };

@@ -118,12 +118,22 @@
   .hud-bot .pane{display:flex;gap:16px;align-items:flex-end}
   .hud .neg{color:#2ecc71} .hud .pos{color:#ff6b6b}
   .fullbtn{width:44px;height:44px;font-size:22px;line-height:40px;text-align:center;background:#fff;color:#111;border:2px solid rgba(0,0,0,.25);border-radius:8px;cursor:pointer;padding:0;min-height:0}
+  #tv .tvtimes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+  #tv .tvt{border-radius:16px;padding:8px 14px;text-align:center;border:2px solid var(--line);background:#11161d}
+  #tv .tvt.best{border-color:#2ecc71;background:#0f2a1b}
+  #tv .tvt b{display:block;font-size:clamp(38px,12vw,96px);font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums}
+  #tv .tvt.best b{color:#2ecc71}
+  #tv .tvt .lbl{font-size:clamp(13px,3.5vw,18px);color:#cfd8e1}
+  #tv .tvt #tvLastD{display:block;font-size:clamp(16px,4.5vw,28px);font-weight:700}
+  #tv .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #tv .cur{font-size:clamp(56px,19vw,180px)}
+  @media (orientation:landscape){#tv .tvt b{font-size:clamp(34px,8vh,90px)}}
   #mapInfo{padding:4px 12px 0;font-size:12px;color:var(--warn)}
   .note{font-size:12px;color:var(--mut);line-height:1.5;padding:0 12px}
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-17</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-18</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -302,13 +312,15 @@
     <div class="seg" role="group" aria-label="เทียบกับ"><button data-ref="best">ดีที่สุด</button><button data-ref="prev">รอบที่แล้ว</button></div>
     <button class="close" id="tvClose" aria-label="ปิด">✕</button>
   </div>
+  <div class="tvtimes">
+    <div class="tvt best"><span class="lbl">🏆 รอบดีที่สุด <span id="tvBestN"></span></span><b id="tvBest">-</b></div>
+    <div class="tvt last"><span class="lbl">รอบล่าสุด</span><b id="tvLast">-</b><span id="tvLastD" class="lbl"></span></div>
+  </div>
   <div class="main">
     <div><div class="lbl" id="tvCurLbl">เวลารอบนี้</div><div class="cur" id="tvCur">--:--.-</div><div class="chips" id="tvSecs"></div></div>
     <div><div class="lbl" id="tvLiveLbl">ต่างจากรอบดีที่สุด (ตอนนี้)</div><div class="live" id="tvLive">-</div></div>
   </div>
   <div class="grid">
-    <div class="box"><span class="lbl">รอบล่าสุด</span><b id="tvLast">-</b><span id="tvLastD" class="lbl"></span></div>
-    <div class="box"><span class="lbl">ดีที่สุด</span><b id="tvBest" class="neg">-</b><span id="tvBestN" class="lbl"></span></div>
     <div class="box"><span class="lbl">ความเร็ว</span><b id="tvSpd">0</b><span class="lbl">km/h</span></div>
     <div class="box"><span class="lbl">กำลัง</span><b id="tvPw" style="color:#b57cff">0</b><span class="lbl">W</span></div>
   </div>
@@ -1602,6 +1614,8 @@ function tvTick() {
   if (last && refMode === 'prev' && laps.length > 1) d = last.ms - laps[laps.length - 2].ms;
   $('tvLastD').textContent = last ? (d == null ? (best === last ? 'ดีที่สุด' : '') : fmtDelta(d)) : '';
   $('tvLastD').className = 'lbl ' + (d == null ? '' : d < 0 ? 'neg' : 'pos');
+  document.querySelector('#tv .tvt.best .lbl').firstChild.textContent = `🏆 ${runWord()}ดีที่สุด `;
+  document.querySelector('#tv .tvt.last .lbl').textContent = `${runWord()}ล่าสุด`;
   $('tvBest').textContent = best ? fmtLap(best.ms) : '-';
   $('tvBestN').textContent = best ? `รอบที่ ${best.n}` : '';
   const s = samples[samples.length - 1];

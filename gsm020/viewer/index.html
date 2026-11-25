@@ -93,6 +93,28 @@
   .wheelw .wtxt,.wheelw .wus{font:800 14px system-ui,sans-serif;color:#fff;background:rgba(5,7,10,.78);border-radius:8px;padding:2px 8px;display:inline-block;margin-top:3px;white-space:nowrap}
   .full .wheelw .wtxt{font-size:20px}
   .wheelw #wheelG{transition:transform 60ms linear}
+  #vtv{position:fixed;inset:0;z-index:5000;background:#05070a;display:none;flex-direction:column;padding:max(12px,env(safe-area-inset-top)) 16px 16px}
+  #vtv.show{display:flex}
+  #vtv .top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  #vtv .lapno{font-size:20px;font-weight:700;flex:1}
+  #vtv .close{font-size:22px;min-width:48px;background:#181d24;color:var(--text);border:1px solid var(--line);border-radius:10px;min-height:44px}
+  #vtv .tvtimes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+  #vtv .tvt{border-radius:16px;padding:8px 14px;text-align:center;border:2px solid var(--line);background:#11161d}
+  #vtv .tvt.best{border-color:#2ecc71;background:#0f2a1b}
+  #vtv .tvt b{display:block;font-size:clamp(38px,12vw,96px);font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums}
+  #vtv .tvt.best b{color:#2ecc71}
+  #vtv .lbl{font-size:clamp(13px,3.5vw,18px);color:#cfd8e1}
+  #vtv #vLastD{display:block;font-size:clamp(16px,4.5vw,28px);font-weight:700}
+  #vtv .main{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:4px}
+  #vtv .live{font-size:clamp(40px,13vw,120px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1.05}
+  #vtv .cur{font-size:clamp(56px,19vw,180px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+  #vtv .chips{justify-content:center;margin:6px 0 10px}
+  #vtv .chip{font-size:clamp(16px,4.5vw,26px);padding:6px 10px}
+  #vtv .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  #vtv .box{background:#11161d;border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
+  #vtv .box b{display:block;font-size:clamp(22px,7vw,44px);font-variant-numeric:tabular-nums}
+  #vtv.flash .cur{color:#2ecc71}
+  @media (orientation:landscape){#vtv .main{gap:0} #vtv .cur{font-size:min(19vw,20vh)} #vtv .live{font-size:min(13vw,13vh)} #vtv .tvt b{font-size:clamp(34px,8vh,90px)}}
   #status{padding:0 14px;font-size:12px;color:#f1c40f;min-height:16px}
   .sec{margin:8px 14px 4px;font-size:13px;color:var(--mut)}
   .fig{position:relative;height:200px;margin:0 14px;background:var(--card);border:1px solid var(--line);border-radius:12px}
@@ -129,6 +151,7 @@
     </div>
   </div>
   <div class="lap" id="lapBox" hidden>
+    <div class="ctrl" style="margin:0 0 6px"><b style="font-size:15px;flex:1">เวลาต่อรอบ</b><button id="vtvBtn" style="background:#3fa7ff;color:#fff;border:0;border-radius:10px;padding:8px 12px;font-weight:700;min-height:40px">⏱ หน้าจอจับเวลาเต็มจอ</button></div>
     <div class="row">
       <div><div class="kv" id="dLbl">ต่างจากรอบดีที่สุด</div><div id="lapD" style="font-size:clamp(26px,8vw,48px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1">-</div>
         <div class="kv" id="lapNo" style="margin-top:4px">รอบปัจจุบัน</div><div class="cur" id="lapCur">--:--.--</div></div>
@@ -190,6 +213,26 @@
   <div class="legend" id="lgSpd"><span>ช้า</span><div class="grad"></div><span>เร็ว (<span id="lg">0</span> km/h)</span></div>
   <div class="legend" id="lgUs" hidden><span style="color:#3498ff">■ อันเดอร์สเตียร์</span><span style="color:#8a96a3">■ สมดุล/ทางตรง</span><span style="color:#e74c3c">■ โอเวอร์สเตียร์</span></div>
   <div class="legend" id="lgAcc" hidden><span style="color:#2ecc71">■ เร่ง</span><span style="color:#c9b458">■ ปล่อยคันเร่ง</span><span style="color:#e74c3c">■ เบรก</span><span style="margin-left:auto">เข้มตามแรง G</span></div>
+</div>
+
+<div id="vtv" role="dialog" aria-label="หน้าจอจับเวลา">
+  <div class="top">
+    <div class="lapno" id="vLapNo">รอบที่ 1</div>
+    <div class="seg" role="group" aria-label="เทียบกับ"><button data-vref="best">ดีที่สุด</button><button data-vref="prev">รอบที่แล้ว</button></div>
+    <button class="close" id="vtvClose" aria-label="ปิด">✕</button>
+  </div>
+  <div class="tvtimes">
+    <div class="tvt best"><span class="lbl" id="vBestLbl">🏆 รอบดีที่สุด</span><b id="vBest">-</b></div>
+    <div class="tvt last"><span class="lbl" id="vLastLbl">รอบล่าสุด</span><b id="vLast">-</b><span id="vLastD" class="lbl"></span></div>
+  </div>
+  <div class="main">
+    <div><div class="lbl" id="vLiveLbl">ต่างจากรอบดีที่สุด (ตอนนี้)</div><div class="live" id="vLive">-</div></div>
+    <div><div class="lbl" id="vCurLbl">เวลารอบนี้</div><div class="cur" id="vCur">--:--.--</div><div class="chips" id="vSecs"></div></div>
+  </div>
+  <div class="grid">
+    <div class="box"><span class="lbl">ความเร็ว</span><b id="vSpd">0</b><span class="lbl">km/h</span></div>
+    <div class="box"><span class="lbl">กำลัง</span><b id="vPw" style="color:#b57cff">0</b><span class="lbl">W</span></div>
+  </div>
 </div>
 
 <script>
@@ -563,6 +606,44 @@ function start(room) {
   };
   let acWake = null;
 
+
+
+  // ---- full-screen lap timer (same layout as the sender's) ----
+  let vtvWake = null;
+  $('vtvBtn').onclick = async () => {
+    $('vtv').classList.add('show'); vtvTick();
+    try { await document.documentElement.requestFullscreen(); } catch (e) {}
+    try { vtvWake = await navigator.wakeLock.request('screen'); } catch (e) {}
+  };
+  $('vtvClose').onclick = async () => {
+    $('vtv').classList.remove('show');
+    try { if (document.fullscreenElement) await document.exitFullscreen(); } catch (e) {}
+    try { if (vtvWake) { await vtvWake.release(); vtvWake = null; } } catch (e) {}
+  };
+  let vtvN = 0;
+  function vtvTick() {
+    if (!$('vtv').classList.contains('show')) return;
+    const W = lap && lap.mode === 'rally' ? 'รัน' : 'รอบ';
+    $('vLapNo').textContent = $('lapNo').textContent;
+    $('vBestLbl').textContent = `🏆 ${W}ดีที่สุด ${$('lapBestN').textContent}`;
+    $('vBest').textContent = $('lapBest').textContent;
+    $('vLastLbl').textContent = `${W}ล่าสุด`;
+    $('vLast').textContent = $('lapLast').textContent;
+    $('vLastD').textContent = $('lapLastD').textContent;
+    $('vLastD').style.color = $('lapLastD').classList.contains('neg') ? '#2ecc71' : $('lapLastD').classList.contains('pos') ? '#ff6b6b' : '';
+    $('vLiveLbl').textContent = $('dLbl').textContent + ' (ตอนนี้)';
+    $('vLive').textContent = $('lapD').textContent;
+    $('vLive').style.color = $('lapD').classList.contains('neg') ? '#2ecc71' : $('lapD').classList.contains('pos') ? '#ff6b6b' : '';
+    $('vCurLbl').textContent = `เวลา${W}นี้`;
+    $('vCur').textContent = $('lapCur').textContent;
+    $('vSecs').innerHTML = $('secNow').innerHTML;
+    $('vSpd').textContent = Math.round(parseFloat($('spd').textContent) || 0);
+    $('vPw').textContent = $('pw').textContent;
+    const n = lapRows.length;
+    if (n > vtvN && vtvN) { $('vtv').classList.add('flash'); setTimeout(() => $('vtv').classList.remove('flash'), 3000); }
+    vtvN = n;
+  }
+  setInterval(vtvTick, 100);
 
   // ---- full-screen map with overlay ----
   let mapFullWake = null;

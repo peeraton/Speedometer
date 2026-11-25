@@ -180,7 +180,7 @@
   <div id="mapWrap">
     <div class="sec">แผนที่</div>
     <div class="ctrl">
-      <div class="seg" role="group" aria-label="สีเส้นทาง"><button data-mapc="spd" class="sel">สีตามความเร็ว</button><button data-mapc="acc">สีเร่ง/เบรก</button><button data-mapc="us">สีอันเดอร์/โอเวอร์</button></div>
+      <div class="seg" role="group" aria-label="สีเส้นทาง"><button data-mapc="spd" class="sel">สีตามความเร็ว</button><button data-mapc="acc">สีเร่ง/เบรก</button><button data-mapc="lat">สีแรง G ด้านข้าง</button><button data-mapc="us">สีอันเดอร์/โอเวอร์</button></div>
       <select id="mapView" aria-label="แสดงบนแผนที่"></select>
       <label><input type="checkbox" id="brkShow" checked style="width:20px;height:20px">จุดเบรก</label>
     </div>
@@ -211,6 +211,7 @@
 </div>
   </div>
   <div class="legend" id="lgSpd"><span>ช้า</span><div class="grad"></div><span>เร็ว (<span id="lg">0</span> km/h)</span></div>
+  <div class="legend" id="lgLat" hidden><span>เข้าโค้งเบา</span><div class="grad"></div><span>แรง (สูงสุด <span id="lgLatMax">0</span> g)</span></div>
   <div class="legend" id="lgUs" hidden><span style="color:#3498ff">■ อันเดอร์สเตียร์</span><span style="color:#8a96a3">■ สมดุล/ทางตรง</span><span style="color:#e74c3c">■ โอเวอร์สเตียร์</span></div>
   <div class="legend" id="lgAcc" hidden><span style="color:#2ecc71">■ เร่ง</span><span style="color:#c9b458">■ ปล่อยคันเร่ง</span><span style="color:#e74c3c">■ เบรก</span><span style="margin-left:auto">เข้มตามแรง G</span></div>
 </div>
@@ -336,7 +337,22 @@ function start(room) {
     const t = Math.min(1, Math.abs(p.us) / 3), g = [120, 130, 140], to = p.us > 0 ? [52, 152, 255] : [231, 76, 60];
     return `rgb(${g.map((c, i) => Math.round(c + (to[i] - c) * t))})`;
   }
-  const segColor = p => mapColor === 'acc' ? accColor(p.g || 0) : mapColor === 'us' ? usColor(p) : color(p.spd);
+  let maxLatG = 0;
+  function latColor(p) {
+    if (p.ay == null) return 'rgb(120,130,140)';
+    const r = Math.min(1, Math.abs(p.ay) / Math.max(0.3, maxLatG));
+    const q = r * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(q)), f = q - i;
+    return `rgb(${stops[i].map((a, j) => Math.round(a + (stops[i+1][j] - a) * f))})`;
+  }
+  function pointTip(p) {
+    const lon = p.g || 0, lat = p.ay, v = p.spd / 3.6;
+    const r = lat != null && Math.abs(lat) > 0.05 && v > 2 ? v * v / (Math.abs(lat) * 9.80665) : null;
+    const tot = lat == null ? Math.abs(lon) : Math.hypot(lon, lat);
+    return `${p.spd.toFixed(1)} km/h · แนวยาว ${lon >= 0 ? '+' : ''}${lon.toFixed(2)} g` +
+           (lat == null ? '' : ` · ด้านข้าง ${Math.abs(lat).toFixed(2)} g${lat > 0.05 ? ' ซ้าย' : lat < -0.05 ? ' ขวา' : ''}`) +
+           (r ? ` · R ${r < 1000 ? r.toFixed(0) : '>1000'} m` : '') + ` · รวม ${tot.toFixed(2)} g`;
+  }
+  const segColor = p => mapColor === 'acc' ? accColor(p.g || 0) : mapColor === 'us' ? usColor(p) : mapColor === 'lat' ? latColor(p) : color(p.spd);
   const sideTxt = a => Math.abs(a) < 0.5 ? 'ตรง 0°' : `${a > 0 ? 'ซ้าย' : 'ขวา'} ${Math.abs(a).toFixed(0)}°`;
   function wheelShow(sw, us) {
     $('wheelW').classList.toggle('show', sw != null);
@@ -362,10 +378,11 @@ function start(room) {
     return [{from: -Infinity, to: Infinity}];
   }
   function drawPoint(p, faint) {
+    if (p.ay != null && Math.abs(p.ay) > maxLatG) { maxLatG = Math.abs(p.ay); $('lgLatMax').textContent = maxLatG.toFixed(2); }
     const prev = drawPrev, c = segColor(p);
     const seg = prev && p.t - prev.t < 3000 ? L.polyline([[prev.lat, prev.lon], [p.lat, p.lon]], {color:c, weight: faint ? 3 : 5, opacity: faint ? .4 : .9, dashArray: faint ? '6 6' : null}).addTo(trackLayer) : null;
     const dot = L.circleMarker([p.lat, p.lon], {radius: faint ? 2 : 3, weight:0, fillColor:c, fillOpacity: faint ? .4 : 1}).addTo(trackLayer)
-      .bindTooltip(`${p.spd.toFixed(1)} km/h · ${(p.g || 0).toFixed(2)} g`, {sticky:true});
+      .bindTooltip(() => pointTip(p), {sticky:true});
     drawn.push({p, seg, dot}); drawPrev = p;
     if (faint) return;
     if (p.dist != null && p.dist - lastLbl >= 25) {
@@ -677,7 +694,7 @@ function start(room) {
   function setTrack(d) {
     let snap;
     if (d.fmt === 2) {
-      snap = (d.pts || []).map(r => { const p = {t:r[0], spd:r[1], g:r[4], dist:r[5]}; if (r[2] != null) { p.lat = r[2]; p.lon = r[3]; } if (r[6] != null) p.us = r[6]; if (r[7] != null) p.sw = r[7]; return p; });
+      snap = (d.pts || []).map(r => { const p = {t:r[0], spd:r[1], g:r[4], dist:r[5]}; if (r[2] != null) { p.lat = r[2]; p.lon = r[3]; } if (r[6] != null) p.us = r[6]; if (r[7] != null) p.sw = r[7]; if (r[8] != null) p.ay = r[8]; return p; });
       brkRows = (d.brk || []).map(rowToZ);
     } else {
       snap = (d.pts || []).map(r => r.length >= 4 ? {t:r[0], spd:r[1], lat:r[2], lon:r[3]} : {t:r[0], spd:r[1]});
@@ -707,7 +724,7 @@ function start(room) {
     else pts.push({t:d.t || Date.now(), spd:d.spd});
     if (d.lap) setLap(d.lap);
     if (Array.isArray(d.np)) d.np.forEach(r => {          // smoothed points from the sender (same as its map)
-      const u = upsert({t:r[0], spd:r[1], g:r[4], dist:r[5], ...(r[2] != null ? {lat:r[2], lon:r[3]} : {}), ...(r[6] != null ? {us:r[6]} : {}), ...(r[7] != null ? {sw:r[7]} : {})});
+      const u = upsert({t:r[0], spd:r[1], g:r[4], dist:r[5], ...(r[2] != null ? {lat:r[2], lon:r[3]} : {}), ...(r[6] != null ? {us:r[6]} : {}), ...(r[7] != null ? {sw:r[7]} : {}), ...(r[8] != null ? {ay:r[8]} : {})});
       if (u.fresh) addPositioned(u.p);
     });
     if (Array.isArray(d.bz) && d.bz.length) { d.bz.forEach(r => brkRows.push(rowToZ(r))); drawBrakes(); }
@@ -735,7 +752,7 @@ function start(room) {
   document.querySelectorAll('[data-mapc]').forEach(b => b.onclick = () => {
     mapColor = b.dataset.mapc;
     document.querySelectorAll('[data-mapc]').forEach(x => x.classList.toggle('sel', x === b));
-    $('lgSpd').hidden = mapColor !== 'spd'; $('lgAcc').hidden = mapColor !== 'acc'; $('lgUs').hidden = mapColor !== 'us';
+    $('lgSpd').hidden = mapColor !== 'spd'; $('lgAcc').hidden = mapColor !== 'acc'; $('lgUs').hidden = mapColor !== 'us'; $('lgLat').hidden = mapColor !== 'lat';
     recolor();
   });
   $('mapView').onchange = () => { mapView = $('mapView').value; follow = mapView === 'all' || mapView === 'cur' || mapView === 'curbest'; renderMap(!follow); drawLapTable(); locUi(); };

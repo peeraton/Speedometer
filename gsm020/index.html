@@ -142,7 +142,7 @@
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-27</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-28</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -255,7 +255,7 @@
 </div>
 
 <div class="sec" style="flex-wrap:wrap;gap:6px">
-  <div class="seg" role="group" aria-label="สีเส้นทาง"><button data-mapc="spd" class="sel">สีตามความเร็ว</button><button data-mapc="acc">สีเร่ง/เบรก</button><button data-mapc="us">สีอันเดอร์/โอเวอร์</button></div>
+  <div class="seg" role="group" aria-label="สีเส้นทาง"><button data-mapc="spd" class="sel">สีตามความเร็ว</button><button data-mapc="acc">สีเร่ง/เบรก</button><button data-mapc="lat">สีแรง G ด้านข้าง</button><button data-mapc="us">สีอันเดอร์/โอเวอร์</button></div>
   <select id="mapView" aria-label="แสดงบนแผนที่" style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px;font-size:13px;min-height:36px;max-width:100%"></select>
   <label class="kv" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="brkShow" checked style="width:20px;height:20px">จุดเบรก</label>
   <select id="brkG" aria-label="แรงเบรกขั้นต่ำ" style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px;font-size:13px;min-height:36px">
@@ -291,12 +291,15 @@
 </div>
 </div>
 <div class="legend" id="lgSpd"><span>ช้า</span><div class="grad"></div><span>เร็ว (<span id="lgMax">0</span> km/h)</span></div>
+<div class="legend" id="lgLat" hidden><span>เข้าโค้งเบา</span><div class="grad"></div><span>แรง (สูงสุด <span id="lgLatMax">0</span> g)</span></div>
 <div class="legend" id="lgUs" hidden><span style="color:#3498ff">■ อันเดอร์สเตียร์</span><span style="color:#8a96a3">■ สมดุล/ทางตรง</span><span style="color:#e74c3c">■ โอเวอร์สเตียร์</span><span style="margin-left:auto">เข้มสุดที่ ±3° มุมล้อ</span></div>
 <div class="legend" id="lgAcc" hidden><span style="color:#2ecc71">■ เร่ง</span><span style="color:#c9b458">■ ปล่อยคันเร่ง</span><span style="color:#e74c3c">■ เบรก</span><span style="margin-left:auto">เข้มตามแรง G</span></div>
 <p class="note">ตัวเลขบนเส้นทางคือความเร็ว (km/h) ทุก ~25 m ป้ายขอบแดงคือจุดที่เร็วที่สุด GSM020 ไม่ส่งพิกัด แผนที่ใช้ตำแหน่งจาก GPS มือถือ แล้วเติมจุดระหว่างตำแหน่งด้วยระยะทางจาก GSM020 ทุกค่าความเร็วจึงมีจุดของตัวเอง (เส้นทางจะขึ้นช้ากว่าความจริงประมาณ 1–2 วินาที) ใช้ได้เมื่อมือถือเคลื่อนที่ไปกับรถ แตะเส้นทางเพื่อดูความเร็ว ณ จุดนั้น</p>
 
 <div class="sec"><div class="seg" role="group" aria-label="กราฟ"><button data-chart="spd" class="sel">ความเร็ว</button><button data-chart="pw">กำลัง</button></div><span id="chartInfo"></span></div>
 <div class="fig"><canvas id="chart"></canvas></div>
+<div class="sec"><span>วงกลมแรง G (เร่ง/เบรก เทียบ เข้าโค้ง) · ตามรอบที่เลือกบนแผนที่</span><span id="ggInfo"></span></div>
+<div class="fig" style="height:min(92vw,420px)"><canvas id="gg"></canvas></div>
 
 <h2 class="setuph" id="setupH">⚙️ ตั้งค่า</h2>
 
@@ -455,7 +458,7 @@ function resetRun() {
   fixes = []; assignIdx = 0; lastLabelDist = -1e9; maxPlaced = null; nFix = 0;
   if (maxMarker) { maxMarker.remove(); maxMarker = null; }
   brkZones = []; brkCur = null; brkPre = null; brkLayer.clearLayers();
-  prevPlaced = null; hdgPrev = null; yawF = 0; lastUs = null;
+  prevPlaced = null; hdgPrev = null; yawF = 0; lastUs = null; maxLatG = 0;
   trackLayer.clearLayers(); drawn = []; drawChart(); updateStats(null);
   if (typeof clearLaps === 'function') clearLaps();
 }
@@ -662,7 +665,31 @@ function accColor(acc) {
   if (g < -0.05) return mix(coast, [231, 76, 60], Math.min(1, (-g - 0.05) / 0.4));
   return `rgb(${coast})`;
 }
-const segColor = x => mapColor === 'acc' ? accColor(x.acc) : mapColor === 'us' ? usColor(x) : color(x.spd);
+
+// details shown when a point on the track is tapped
+function gInfo(x) {
+  const lon = x.acc / G, lat = x.ay, v = x.spd / 3.6;
+  const r = lat != null && Math.abs(lat) > 0.05 && v > 2 ? v * v / (Math.abs(lat) * G) : null;
+  return {lon, lat, r, tot: lat == null ? Math.abs(lon) : Math.hypot(lon, lat)};
+}
+function pointInfo(x) {
+  const k = gInfo(x);
+  const lonTxt = `${k.lon >= 0 ? '+' : ''}${k.lon.toFixed(2)} g ${k.lon > 0.05 ? '(เร่ง)' : k.lon < -0.05 ? '(เบรก)' : ''}`;
+  const latTxt = k.lat == null ? '-' : `${Math.abs(k.lat).toFixed(2)} g ${k.lat > 0.05 ? 'ซ้าย' : k.lat < -0.05 ? 'ขวา' : '(ตรง)'}`;
+  return `<b>${x.spd.toFixed(1)} km/h</b> · ${new Date(x.t).toLocaleTimeString('th-TH')}<br>` +
+         `แนวยาว ${lonTxt}<br>ด้านข้าง ${latTxt}${k.r ? ` · รัศมีโค้ง ${k.r < 1000 ? k.r.toFixed(0) : '>1000'} m` : ''}<br>` +
+         `แรง G รวม <b>${k.tot.toFixed(2)} g</b><br>ระยะ ${Math.round(x.dist)} m` +
+         (x.us != null ? `<br>${x.us > 0 ? 'อันเดอร์สเตียร์' : 'โอเวอร์สเตียร์'} ${x.us > 0 ? '+' : ''}${x.us.toFixed(1)}°` : '');
+}
+let maxLatG = 0;
+function latColor(x) {
+  if (x.ay == null) return 'rgb(120,130,140)';
+  const r = Math.min(1, Math.abs(x.ay) / Math.max(0.3, maxLatG));
+  const stops = [[46,204,113],[241,196,15],[230,126,34],[231,76,60]];
+  const q = r * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(q)), f = q - i;
+  return `rgb(${stops[i].map((a, j) => Math.round(a + (stops[i+1][j] - a) * f))})`;
+}
+const segColor = x => mapColor === 'acc' ? accColor(x.acc) : mapColor === 'us' ? usColor(x) : mapColor === 'lat' ? latColor(x) : color(x.spd);
 function recolorTrack() { drawn.forEach(d => { const k = segColor(d.s); d.seg && d.seg.setStyle({color:k}); d.dot.setStyle({fillColor:k}); }); }
 // ---- which laps the map shows ----
 let mapView = 'all';
@@ -682,7 +709,7 @@ function drawPoint(s, faint) {
   const c = segColor(s);
   const seg = prev && s.t - prev.t < 3000 ? L.polyline([[prev.lat,prev.lon],[s.lat,s.lon]], {color:c, weight: faint ? 3 : 5, opacity: faint ? .4 : .9, dashArray: faint ? '6 6' : null}).addTo(trackLayer) : null;
   const dot = L.circleMarker([s.lat,s.lon], {radius: faint ? 2 : 3, weight:0, fillColor:c, fillOpacity: faint ? .4 : 1}).addTo(trackLayer)
-    .bindPopup(() => `<b>${s.spd.toFixed(1)} km/h</b><br>${new Date(s.t).toLocaleTimeString('th-TH')}<br>ความเร่ง ${(s.acc/G).toFixed(2)} g<br>ระยะ ${Math.round(s.dist)} m`);
+    .bindPopup(() => pointInfo(s));
   drawn.push({s, seg, dot});
   drawPrev = s;
   if (faint) return;
@@ -712,6 +739,7 @@ function renderTrack(fit) {
   const live = sets[sets.length - 1];
   if (live && live.to === Infinity) { const pts = drawn.filter(d => !d.s.faintGroup); drawPrev = pts.length ? pts[pts.length - 1].s : null; }
   drawBrakes();
+  if (typeof ggSoon === 'function') ggSoon();
   if (fit && shown.length > 1) { follow = false; map.fitBounds(L.latLngBounds(shown).pad(0.15)); }
   mapInfo();
 }
@@ -1616,7 +1644,7 @@ $('brkG').onchange = () => {
 document.querySelectorAll('[data-mapc]').forEach(b => b.onclick = () => {
   mapColor = b.dataset.mapc;
   document.querySelectorAll('[data-mapc]').forEach(x => x.classList.toggle('sel', x === b));
-  $('lgSpd').hidden = mapColor !== 'spd'; $('lgAcc').hidden = mapColor !== 'acc'; $('lgUs').hidden = mapColor !== 'us';
+  $('lgSpd').hidden = mapColor !== 'spd'; $('lgAcc').hidden = mapColor !== 'acc'; $('lgUs').hidden = mapColor !== 'us'; $('lgLat').hidden = mapColor !== 'lat';
   recolorTrack();
 });
 
@@ -1841,6 +1869,8 @@ function steerFeed(s) {                       // called for every positioned sam
   s.yaw = yawF;
   s.ay = v * yawF * Math.PI / 180 / G;                                 // lateral g, left +
   lastAy = s.ay;
+  if (Math.abs(s.ay) > maxLatG) { maxLatG = Math.abs(s.ay); $('lgLatMax').textContent = maxLatG.toFixed(2); }
+  ggSoon();
   const sw = steerAt(s.t);
   if (sw != null && stCfg.ok) {
     s.sw = sw;
@@ -1933,6 +1963,37 @@ $('stCalLeft').onclick = () => {
 });
 $('stL').value = stCfg.L; $('stR').value = stCfg.ratio;
 stUi();
+
+// ---------- G-G diagram: longitudinal vs lateral g ----------
+let ggPending = false;
+function ggSoon() { if (!ggPending) { ggPending = true; requestAnimationFrame(() => { ggPending = false; ggDraw(); }); } }
+function ggDraw() {
+  const cv = $('gg'), W = cv.clientWidth, H = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+  if (!W || !H) return;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  const sets = viewSets();
+  const pts = samples.filter(x => x.ay != null && sets.some(r => x.t >= r.from && x.t <= r.to && !r.faint));
+  let mx = 0.5; pts.forEach(x => { mx = Math.max(mx, Math.abs(x.ay), Math.abs(x.acc / G)); });
+  const R = Math.ceil(mx * 2 + 0.2) / 2;                       // ring range, 0.5 g steps
+  const cx = W / 2, cy = H / 2, sc = (Math.min(W, H) / 2 - 22) / R;
+  g.strokeStyle = '#2a313b'; g.fillStyle = '#8a96a3'; g.font = '11px system-ui'; g.lineWidth = 1;
+  for (let r = 0.5; r <= R + 1e-6; r += 0.5) { g.beginPath(); g.arc(cx, cy, r * sc, 0, Math.PI * 2); g.stroke(); g.fillText(`${r.toFixed(1)}g`, cx + 3, cy - r * sc + 12); }
+  g.beginPath(); g.moveTo(cx - R * sc, cy); g.lineTo(cx + R * sc, cy); g.moveTo(cx, cy - R * sc); g.lineTo(cx, cy + R * sc); g.stroke();
+  g.fillText('เร่ง', cx + 4, 14); g.fillText('เบรก', cx + 4, H - 6); g.fillText('ซ้าย', 4, cy - 4); g.fillText('ขวา', W - 28, cy - 4);
+  // left turns plotted on the left, acceleration up, braking down
+  let best = 0;
+  pts.forEach(x => {
+    const lon = x.acc / G, tot = Math.hypot(lon, x.ay); best = Math.max(best, tot);
+    g.fillStyle = color(x.spd); g.globalAlpha = 0.75;
+    g.beginPath(); g.arc(cx - x.ay * sc, cy - lon * sc, 2.2, 0, Math.PI * 2); g.fill();
+  });
+  g.globalAlpha = 1;
+  const last = pts[pts.length - 1];
+  if (last && last === prevPlaced) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(cx - last.ay * sc, cy - last.acc / G * sc, 6, 0, Math.PI * 2); g.stroke(); }
+  $('ggInfo').textContent = pts.length ? `สูงสุดรวม ${best.toFixed(2)} g · ด้านข้าง ${Math.max(0, ...pts.map(x => Math.abs(x.ay))).toFixed(2)} g` : 'ยังไม่มีข้อมูลโค้ง (ต้องมีเส้นทางบนแผนที่)';
+}
+new ResizeObserver(ggDraw).observe($('gg'));
 
 // ---------- reference lap + deltas ----------
 let refMode = 'best';
@@ -2056,7 +2117,7 @@ function accSnap() {
 
 // track row (v2): [t, speed, lat|null, lon|null, longitudinal g, distance m]
 const trow = x => [x.t, r1(x.spd,1), x.lat === undefined ? null : r1(x.lat,6), x.lon === undefined ? null : r1(x.lon,6), r1(x.acc / G, 2), r1(x.dist, 1),
-                   x.us == null ? null : r1(x.us, 2), x.sw == null ? null : r1(x.sw, 1)];
+                   x.us == null ? null : r1(x.us, 2), x.sw == null ? null : r1(x.sw, 1), x.ay == null ? null : r1(x.ay, 2)];
 const brow = z => [z.t, r1(z.lat,6), r1(z.lon,6), r1(z.v0,1), r1(z.v1,1), r1(z.peak,2), Math.round(z.ms), r1(z.m,1)];
 let placedQ = [], pubBz = 0;
 function publishTrack() {

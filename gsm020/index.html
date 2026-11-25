@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>GSM020 Speed Tracker</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{--bg:#0f1216;--card:#181d24;--line:#2a313b;--text:#e8edf2;--mut:#8a96a3;--acc:#3fa7ff;--ok:#2ecc71;--bad:#ff5a5f;--warn:#f1c40f}
+  *{box-sizing:border-box;min-width:0}
+  body{margin:0;font-family:system-ui,-apple-system,"Noto Sans Thai",sans-serif;background:var(--bg);color:var(--text)}
+  header{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+  header h1{font-size:16px;margin:0;flex:1}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--bad)}
+  .dot.on{background:var(--ok)}
+  .bar{display:flex;gap:6px;padding:8px 12px;flex-wrap:wrap}
+  button{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;min-height:44px}
+  button.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+  button.on{border-color:var(--ok);color:var(--ok)}
+  #msg{padding:0 12px 6px;font-size:13px;color:var(--warn);min-height:18px}
+  .hero{display:flex;align-items:baseline;gap:8px;padding:0 12px}
+  .big{font-size:clamp(56px,18vw,96px);font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+  .unit{color:var(--mut);font-weight:600}
+  .gnss{margin-left:auto;text-align:right;font-size:12px;color:var(--mut)}
+  .gnss b{display:block;font-size:15px}
+  .stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding:8px 12px}
+  .st{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px}
+  .st b{display:block;font-size:19px;font-variant-numeric:tabular-nums}
+  .st span{font-size:11px;color:var(--mut)}
+  .sec{margin:6px 12px 0;font-size:13px;color:var(--mut);display:flex;justify-content:space-between;align-items:center}
+  .fig{position:relative;height:170px;margin:4px 12px 0;background:var(--card);border:1px solid var(--line);border-radius:12px}
+  .fig canvas{position:absolute;inset:0;width:100%;height:100%}
+  #map{height:42vh;margin:4px 12px 0;border-radius:12px;border:1px solid var(--line)}
+  .legend{display:flex;align-items:center;gap:6px;padding:6px 12px;font-size:11px;color:var(--mut)}
+  .grad{flex:1;height:8px;border-radius:4px;background:linear-gradient(90deg,#2ecc71,#f1c40f,#e67e22,#e74c3c)}
+  details{margin:8px 12px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  summary{font-weight:600;font-size:14px}
+  #raw{font-family:ui-monospace,monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:30vh;overflow:auto;color:#b9c4cf}
+  .spdlbl{transform:translate(-50%,-130%);font:700 12px system-ui,sans-serif;color:#111;padding:1px 5px;border-radius:7px;border:1.5px solid #111;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+  .spdlbl.max{background:#fff!important;border-color:#e74c3c;color:#e74c3c;font-size:13px}
+  #mapInfo{padding:4px 12px 0;font-size:12px;color:var(--warn)}
+  .note{font-size:12px;color:var(--mut);line-height:1.5;padding:0 12px}
+</style>
+</head>
+<body>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker</h1><span id="devName" class="note"></span></header>
+<div class="bar">
+  <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
+  <button id="btnStop">หยุด</button>
+  <button id="btnClear">เริ่มรอบใหม่</button>
+  <button id="btnCsv">CSV</button>
+  <button id="btnDemo">โหมดทดลอง</button>
+</div>
+<div id="msg"></div>
+
+<div class="hero">
+  <div class="big" id="sSpeed">0.0</div><div class="unit">km/h</div>
+  <div class="gnss"><b id="sFix">ไม่มีสัญญาณ</b>ดาวเทียม <span id="sSats">0</span> ดวง</div>
+</div>
+<div class="stats">
+  <div class="st"><b id="sMax">0.0</b><span>สูงสุด km/h</span></div>
+  <div class="st"><b id="sAvg">0.0</b><span>เฉลี่ย km/h</span></div>
+  <div class="st"><b id="sAcc">0.00</b><span>ความเร่ง g</span></div>
+  <div class="st"><b id="sDist">0</b><span>ระยะทาง m</span></div>
+  <div class="st"><b id="sTime">0:00</b><span>เวลา</span></div>
+  <div class="st"><b id="sMaxAcc">0.00</b><span>ความเร่งสูงสุด g</span></div>
+</div>
+
+<div class="sec"><span>ความเร็วตามเวลา</span><span id="chartInfo"></span></div>
+<div class="fig"><canvas id="chart"></canvas></div>
+
+<div class="sec"><span>แผนที่ (ตำแหน่งจาก GPS มือถือ)</span><button id="btnGps" style="padding:6px 10px;min-height:36px">ใช้ GPS มือถือ: ปิด</button></div>
+<div id="mapInfo"></div>
+<div id="map"></div>
+<div class="legend"><span>ช้า</span><div class="grad"></div><span>เร็ว (<span id="lgMax">0</span> km/h)</span></div>
+<p class="note">ตัวเลขบนเส้นทางคือความเร็ว (km/h) ทุก ~25 m ป้ายขอบแดงคือจุดที่เร็วที่สุด GSM020 ไม่ส่งพิกัด แผนที่ใช้ตำแหน่งจาก GPS มือถือ แล้วเติมจุดระหว่างตำแหน่งด้วยระยะทางจาก GSM020 ทุกค่าความเร็วจึงมีจุดของตัวเอง (เส้นทางจะขึ้นช้ากว่าความจริงประมาณ 1–2 วินาที) ใช้ได้เมื่อมือถือเคลื่อนที่ไปกับรถ แตะเส้นทางเพื่อดูความเร็ว ณ จุดนั้น</p>
+
+<details>
+  <summary>แพ็กเก็ตดิบ</summary>
+  <div id="raw"></div>
+</details>
+
+<script>
+{
+const $ = id => document.getElementById(id);
+const msg = t => { $('msg').textContent = t; };
+const G = 9.80665;
+
+// ---------- GSM020 protocol (from RC Gears logs) ----------
+// service 0xfff0: write 0xfff3, notify 0xfff4, live record = 16-byte READ polled ~4x/s
+const SVC = 0xfff0, CH_WRITE = 0xfff3, CH_NOTIFY = 0xfff4;
+function timeSyncCmd(d = new Date()) {
+  const y = d.getUTCFullYear();
+  const b = [0x0f,0x0e,0x0b,0x00, d.getUTCSeconds(), d.getUTCMinutes(), d.getUTCHours(),
+             d.getUTCDate(), d.getUTCMonth()+1, y>>8, y&0xff, 0,0,0,0];
+  b.push((b.slice(2).reduce((a,c)=>a+c,0) + 1) & 0xff, 0xff, 0xff);
+  return new Uint8Array(b);
+}
+function decodeLive(b) {
+  // [0] fix (0 none, 4/6 fixed)  [2] satellites  [6] 1 = hold/no update
+  // [7..8] speed u16 BE /100 km/h   [9..10] distance u16 BE /10 m
+  return { fix:b[0], mode:b[1], sats:b[2], hold:b[6],
+           speed:((b[7]<<8)|b[8]) / 100, distRaw:(b[9]<<8)|b[10] };
+}
+const isLive = b => b.length === 16 && b[0] < 0x20 && b[15] === 0;
+
+// ---------- state ----------
+let samples = [];   // {t, spd, acc, dist, lat?, lon?}
+let maxSpd = 0, maxAcc = 0, accF = 0, distBase = 0, lastDistRaw = null, distM = 0, t0 = null;
+let gps = null, gpsWatch = null, follow = true;
+// phone GPS fixes {t, lat, lon, d (GSM020 distance at that moment)} and
+// index of the first sample that has not been given a position yet
+let fixes = [], assignIdx = 0;
+
+function resetRun() {
+  samples = []; maxSpd = 0; maxAcc = 0; accF = 0; distBase = 0; lastDistRaw = null; distM = 0; t0 = null;
+  fixes = []; assignIdx = 0; lastLabelDist = -1e9; maxPlaced = null; nFix = 0;
+  if (maxMarker) { maxMarker.remove(); maxMarker = null; }
+  trackLayer.clearLayers(); drawn = []; drawChart(); updateStats(null);
+}
+
+function onLive(rec) {
+  $('sSats').textContent = rec.sats;
+  const fixed = rec.fix > 0 && !rec.hold;
+  $('sFix').textContent = fixed ? 'GNSS พร้อม' : (rec.hold ? 'สัญญาณหลุด' : 'รอสัญญาณ...');
+  $('sFix').style.color = fixed ? 'var(--ok)' : 'var(--warn)';
+  if (!fixed) return;
+  const t = Date.now();
+  if (t0 === null) t0 = t;
+  // distance counter is 16-bit; keep counting across wrap-around
+  if (lastDistRaw !== null && rec.distRaw + 30000 < lastDistRaw) distBase += 65536;
+  lastDistRaw = rec.distRaw;
+  distM = (distBase + rec.distRaw) / 10;
+  const prev = samples[samples.length - 1];
+  let acc = 0;
+  if (prev) {
+    const dt = (t - prev.t) / 1000;
+    if (dt > 0.02) { accF = 0.35 * ((rec.speed - prev.spd) / 3.6 / dt) + 0.65 * accF; acc = accF; }
+  }
+  const s = {t, spd:rec.speed, acc, dist:distM};
+  samples.push(s);
+  maxSpd = Math.max(maxSpd, rec.speed);
+  maxAcc = Math.max(maxAcc, Math.abs(acc) / G);
+  updateStats(s);
+  scheduleChart();
+}
+
+function updateStats(s) {
+  $('sSpeed').textContent = (s ? s.spd : 0).toFixed(1);
+  $('sMax').textContent = maxSpd.toFixed(1);
+  $('sAvg').textContent = (samples.length ? samples.reduce((a,x)=>a+x.spd,0) / samples.length : 0).toFixed(1);
+  $('sAcc').textContent = (s ? s.acc / G : 0).toFixed(2);
+  $('sMaxAcc').textContent = maxAcc.toFixed(2);
+  $('sDist').textContent = Math.round(distM).toLocaleString();
+  const sec = s && t0 ? Math.round((s.t - t0) / 1000) : 0;
+  $('sTime').textContent = `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
+  $('lgMax').textContent = maxSpd.toFixed(0);
+}
+
+// ---------- chart ----------
+const cv = $('chart');
+let chartPending = false;
+const scheduleChart = () => { if (!chartPending) { chartPending = true; requestAnimationFrame(() => { chartPending = false; drawChart(); }); } };
+function drawChart() {
+  const W = cv.clientWidth, H = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0,0,W,H);
+  const pad = {l:34, r:8, t:10, b:20};
+  const pts = samples.length > 1200 ? samples.slice(-1200) : samples;
+  const top = Math.max(10, Math.ceil(maxSpd / 10) * 10);
+  g.font = '11px system-ui'; g.fillStyle = '#8a96a3'; g.strokeStyle = '#2a313b'; g.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (H - pad.t - pad.b) * i / 4;
+    g.beginPath(); g.moveTo(pad.l, y); g.lineTo(W - pad.r, y); g.stroke();
+    g.fillText(String(Math.round(top * (1 - i/4))), 4, y + 4);
+  }
+  if (pts.length < 2) { $('chartInfo').textContent = ''; return; }
+  const ta = pts[0].t, tb = pts[pts.length-1].t, span = Math.max(1, tb - ta);
+  const X = t => pad.l + (W - pad.l - pad.r) * (t - ta) / span;
+  const Y = v => pad.t + (H - pad.t - pad.b) * (1 - v / top);
+  g.lineWidth = 2.5; g.lineJoin = 'round';
+  for (let i = 1; i < pts.length; i++) {
+    g.strokeStyle = color(pts[i].spd);
+    g.beginPath(); g.moveTo(X(pts[i-1].t), Y(pts[i-1].spd)); g.lineTo(X(pts[i].t), Y(pts[i].spd)); g.stroke();
+  }
+  g.fillStyle = '#8a96a3';
+  g.fillText(`${Math.round(span/1000)} วินาทีล่าสุด`, W - pad.r - 90, H - 5);
+  $('chartInfo').textContent = `สูงสุด ${maxSpd.toFixed(1)} km/h`;
+}
+new ResizeObserver(drawChart).observe(cv);
+
+// ---------- fill positions between phone GPS fixes ----------
+// Each GSM020 sample between two GPS fixes is placed along a Catmull-Rom curve
+// through the fixes, at the fraction of GSM020 distance travelled between them
+// (time is used if the car barely moved). Positions lag about 1-2 s behind live.
+function onFix(f) {
+  if (!samples.length && !fixes.length) { fixes.push({...f, d:0}); return; }
+  const last = samples[samples.length - 1];
+  fixes.push({...f, d: last ? last.dist : 0});
+  if (fixes.length > 400) { fixes.splice(0, fixes.length - 400); }
+  if (fixes.length >= 3) assignSegment(fixes.length - 3);
+}
+function cr(p0, p1, p2, p3, u) {
+  const u2 = u*u, u3 = u2*u;
+  return 0.5 * (2*p1 + (-p0 + p2)*u + (2*p0 - 5*p1 + 4*p2 - p3)*u2 + (-p0 + 3*p1 - 3*p2 + p3)*u3);
+}
+function assignSegment(k) {
+  const P1 = fixes[k], P2 = fixes[k+1], P0 = fixes[k-1] || P1, P3 = fixes[k+2] || P2;
+  const gap = P2.t - P1.t > 5000;          // GPS dropped out: don't invent a path
+  const dd = P2.d - P1.d, dt = Math.max(1, P2.t - P1.t);
+  const placed = [];
+  while (assignIdx < samples.length && samples[assignIdx].t < P2.t) {
+    const smp = samples[assignIdx++];
+    if (smp.t < P1.t || gap) continue;
+    let u = dd > 0.3 ? (smp.dist - P1.d) / dd : (smp.t - P1.t) / dt;
+    u = Math.max(0, Math.min(1, u));
+    smp.lat = cr(P0.lat, P1.lat, P2.lat, P3.lat, u);
+    smp.lon = cr(P0.lon, P1.lon, P2.lon, P3.lon, u);
+    placed.push(smp);
+  }
+  placed.forEach(addMapPoint);
+}
+
+// ---------- map (phone GPS) ----------
+const map = L.map('map', {preferCanvas:true}).setView([13.7563,100.5018], 15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:20, attribution:'© OpenStreetMap'}).addTo(map);
+const trackLayer = L.layerGroup().addTo(map);
+const me = L.circleMarker([0,0], {radius:7, color:'#000', weight:2, fillColor:'#fff', fillOpacity:1});
+let drawn = [], lastLabelDist = -1e9, maxPlaced = null, maxMarker = null, nFix = 0;
+map.on('dragstart', () => follow = false);
+map.on('click', () => { follow = true; });
+
+function color(v) {
+  const r = Math.max(0, Math.min(1, maxSpd > 0 ? v / maxSpd : 0));
+  const stops = [[46,204,113],[241,196,15],[230,126,34],[231,76,60]];
+  const x = r * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(x)), f = x - i;
+  return `rgb(${stops[i].map((a, j) => Math.round(a + (stops[i+1][j] - a) * f))})`;
+}
+function addMapPoint(s) {
+  if (s.lat === undefined) return;
+  const prev = drawn.length ? drawn[drawn.length-1].s : null;
+  const c = color(s.spd);
+  const seg = prev && s.t - prev.t < 3000 ? L.polyline([[prev.lat,prev.lon],[s.lat,s.lon]], {color:c, weight:5, opacity:.9}).addTo(trackLayer) : null;
+  const dot = L.circleMarker([s.lat,s.lon], {radius:3, weight:0, fillColor:c, fillOpacity:1}).addTo(trackLayer)
+    .bindPopup(() => `<b>${s.spd.toFixed(1)} km/h</b><br>${new Date(s.t).toLocaleTimeString('th-TH')}<br>ความเร่ง ${(s.acc/G).toFixed(2)} g<br>ระยะ ${Math.round(s.dist)} m`);
+  drawn.push({s, seg, dot});
+  // speed number every ~25 m along the route
+  if (s.dist - lastLabelDist >= 25) {
+    lastLabelDist = s.dist;
+    L.marker([s.lat, s.lon], {interactive:false, icon:L.divIcon({className:'', iconSize:null,
+      html:`<div class="spdlbl" style="background:${c}">${s.spd.toFixed(0)}</div>`})}).addTo(trackLayer);
+  }
+  // top-speed marker
+  if (!maxPlaced || s.spd > maxPlaced.spd) {
+    maxPlaced = s;
+    const ic = L.divIcon({className:'', iconSize:null, html:`<div class="spdlbl max">สูงสุด ${s.spd.toFixed(1)}</div>`});
+    if (maxMarker) maxMarker.setLatLng([s.lat, s.lon]).setIcon(ic);
+    else maxMarker = L.marker([s.lat, s.lon], {icon:ic, zIndexOffset:1000, interactive:false}).addTo(map);
+  }
+  if (drawn.length % 20 === 0) drawn.forEach(d => { const k = color(d.s.spd); d.seg && d.seg.setStyle({color:k}); d.dot.setStyle({fillColor:k}); });
+}
+let gpsErr = null;
+const GPS_MAX_ERR = 50;   // metres; worse fixes are shown but not used for the track
+function mapInfo() {
+  let t;
+  if (demoTimer) t = 'โหมดทดลอง: จำลอง GPS วิ่งรอบสนามวงรี';
+  else if (gpsErr) t = gpsErr;
+  else if (gpsWatch === null) t = 'GPS มือถือปิดอยู่ กดปุ่มด้านบนเพื่อเปิด (ต้องเปิดจึงจะมีเส้นทาง)';
+  else if (!gps) t = 'กำลังหาตำแหน่งมือถือ ...';
+  else if (gps.acc > GPS_MAX_ERR) t = `GPS มือถือคลาดเคลื่อน ±${Math.round(gps.acc)} m (ต้องไม่เกิน ${GPS_MAX_ERR} m) ออกไปที่โล่ง`;
+  else if (!samples.length) t = `GPS มือถือ ±${Math.round(gps.acc)} m พร้อมแล้ว รอ GSM020 จับสัญญาณ (ไฟเขียว)`;
+  else if (!drawn.length) t = `GPS มือถือ ±${Math.round(gps.acc)} m กำลังเริ่มวาดเส้นทาง ...`;
+  else t = '';
+  $('mapInfo').textContent = t;
+}
+function startGps() {
+  if (gpsWatch !== null || demoTimer) return;
+  if (!navigator.geolocation) { msg('เบราว์เซอร์นี้ใช้ตำแหน่งไม่ได้'); return; }
+  gpsErr = null;
+  gpsWatch = navigator.geolocation.watchPosition(p => {
+    gpsErr = null;
+    gps = {lat:p.coords.latitude, lon:p.coords.longitude, t:Date.now(), acc:p.coords.accuracy};
+    me.setLatLng([gps.lat, gps.lon]).addTo(map);
+    if (gps.acc <= GPS_MAX_ERR) { nFix++; onFix(gps); }
+    if (follow) map.setView([gps.lat, gps.lon], Math.max(map.getZoom(), 17), {animate:false});
+    mapInfo();
+  }, e => {
+    if (e.code === 1) {            // permission denied or prompt dismissed: stop and explain
+      gpsErr = 'Chrome ยังไม่ได้รับสิทธิ์ใช้ตำแหน่ง: แตะไอคอนหน้าลิงก์ด้านบน > สิทธิ์ > ตำแหน่ง > อนุญาต แล้วกดปุ่ม GPS อีกครั้ง';
+      stopGps(true);
+    } else if (e.code === 2) {
+      gpsErr = 'มือถือหาตำแหน่งไม่ได้: เปิด "ตำแหน่ง (Location)" ที่แถบด้านบนของมือถือ';
+    } else {
+      gpsErr = 'ยังหาตำแหน่งไม่เจอ: ลองออกไปที่โล่ง หรือเปิด "ตำแหน่งที่แม่นยำ" ให้ Chrome';
+    }
+    mapInfo();
+  },
+     {enableHighAccuracy:true, maximumAge:0, timeout:15000});
+  $('btnGps').textContent = 'ใช้ GPS มือถือ: เปิด'; $('btnGps').classList.add('on');
+  mapInfo();
+}
+function stopGps(keepErr) {
+  if (gpsWatch !== null) navigator.geolocation.clearWatch(gpsWatch);
+  gpsWatch = null; gps = null; me.remove();
+  if (!keepErr) gpsErr = null;
+  $('btnGps').textContent = 'ใช้ GPS มือถือ: ปิด'; $('btnGps').classList.remove('on');
+  mapInfo();
+}
+$('btnGps').onclick = () => gpsWatch !== null ? stopGps() : startGps();
+
+setInterval(mapInfo, 1000);
+
+// ---------- raw log ----------
+let rawLines = [];
+function logRaw(tag, bytes) {
+  const hex = [...bytes].map(b=>b.toString(16).padStart(2,'0')).join(' ');
+  rawLines.unshift(`${new Date().toLocaleTimeString('th-TH')} ${tag} ${hex}`);
+  if (rawLines.length > 60) rawLines.length = 60;
+  $('raw').textContent = rawLines.join('\n');
+}
+
+// ---------- bluetooth ----------
+let device = null, polling = false, demoTimer = null;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function connect() {
+  if (!navigator.bluetooth) { msg('เบราว์เซอร์นี้ใช้บลูทูธไม่ได้: เปิดลิงก์ https ใน Chrome บน Android'); return; }
+  stopAll();
+  try {
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{namePrefix:'GPSspeed'}, {namePrefix:'GNSS'}, {namePrefix:'GSM'}, {services:[SVC]}],
+      optionalServices: [SVC]
+    });
+  } catch (e) { msg('ยังไม่ได้เลือกอุปกรณ์: ' + e.message); return; }
+  $('devName').textContent = device.name || '';
+  device.addEventListener('gattserverdisconnected', () => {
+    polling = false; $('dot').classList.remove('on');
+    if (device) msg('การเชื่อมต่อหลุด กดเชื่อมต่อใหม่ได้');
+  });
+  try {
+    msg('กำลังเชื่อมต่อ ...');
+    const server = await device.gatt.connect();
+    const svc = await server.getPrimaryService(SVC);
+    const chars = await svc.getCharacteristics();
+    // 1) notifications (command replies)
+    try {
+      const n = await svc.getCharacteristic(CH_NOTIFY);
+      n.addEventListener('characteristicvaluechanged', e => logRaw('ตอบกลับ', new Uint8Array(e.target.value.buffer)));
+      await n.startNotifications();
+    } catch (e) { logRaw('notify ไม่ได้', new Uint8Array()); }
+    // 2) start command (time sync) - this is what wakes the GSM020 up
+    const w = await svc.getCharacteristic(CH_WRITE);
+    const cmd = timeSyncCmd();
+    if (w.writeValueWithResponse && w.properties.write) await w.writeValueWithResponse(cmd);
+    else await w.writeValueWithoutResponse(cmd);
+    logRaw('ส่งคำสั่ง', cmd);
+    await sleep(500);
+    // 3) find the characteristic that returns the 16-byte live record
+    let liveCh = null;
+    for (let attempt = 0; attempt < 4 && !liveCh; attempt++) {
+      for (const c of chars) {
+        if (!c.properties.read) continue;
+        try {
+          const v = new Uint8Array((await c.readValue()).buffer);
+          logRaw('อ่าน ' + c.uuid.slice(4,8), v);
+          if (isLive(v)) { liveCh = c; break; }
+        } catch (e) {}
+      }
+      if (!liveCh) await sleep(700);
+    }
+    if (!liveCh) { msg('เชื่อมต่อได้ แต่ยังไม่พบช่องข้อมูลความเร็ว ลองกดหยุดแล้วเชื่อมต่อใหม่'); return; }
+    $('dot').classList.add('on');
+    startGps();   // ask for location only after the Bluetooth chooser has closed
+    msg('เชื่อมต่อแล้ว ' + (samples.length ? '' : 'รอไฟเขียว (GNSS) ที่เครื่อง'));
+    // 4) poll like RC Gears does
+    polling = true;
+    let n = 0;
+    while (polling && device && device.gatt.connected) {
+      const started = performance.now();
+      try {
+        const v = new Uint8Array((await liveCh.readValue()).buffer);
+        if (++n % 10 === 0) logRaw('ข้อมูล', v);
+        if (isLive(v)) { onLive(decodeLive(v)); if (samples.length === 1) msg('กำลังบันทึก'); }
+      } catch (e) { await sleep(300); }
+      const wait = 100 - (performance.now() - started);
+      if (wait > 0) await sleep(wait);
+    }
+  } catch (e) {
+    msg('เชื่อมต่อไม่สำเร็จ: ' + e.message + ' (ปิดแอป RC Gears ให้สนิทก่อน)');
+  }
+}
+
+function stopAll() {
+  polling = false;
+  if (demoTimer) { clearInterval(demoTimer); demoTimer = null; me.remove(); }
+  const d = device; device = null;
+  if (d && d.gatt.connected) d.gatt.disconnect();
+  $('dot').classList.remove('on');
+}
+
+$('btnConnect').onclick = connect;
+$('btnStop').onclick = () => { stopAll(); msg('หยุดแล้ว'); };
+$('btnClear').onclick = () => { resetRun(); msg('เริ่มรอบใหม่'); };
+// demo: car laps an oval (2 x 60 m straights, 20 m radius bends) around the map centre
+function ovalPoint(dm, c0) {
+  const L1 = 60, R = 20, per = 2*L1 + 2*Math.PI*R;
+  let d = dm % per, x, y;
+  if (d < L1) { x = -L1/2 + d; y = -R; }
+  else if ((d -= L1) < Math.PI*R) { const a = -Math.PI/2 + d/R; x = L1/2 + R*Math.cos(a); y = R*Math.sin(a); }
+  else if ((d -= Math.PI*R) < L1) { x = L1/2 - d; y = R; }
+  else { d -= L1; const a = Math.PI/2 + d/R; x = -L1/2 + R*Math.cos(a); y = R*Math.sin(a); }
+  const mLat = 111320, mLon = 111320 * Math.cos(c0.lat * Math.PI/180);
+  return {lat: c0.lat + y/mLat, lon: c0.lng + x/mLon};
+}
+$('btnDemo').onclick = () => {
+  stopAll(); stopGps(); resetRun(); $('dot').classList.add('on');
+  msg('โหมดทดลอง: ข้อมูลจำลองรูปแบบเดียวกับ GSM020 พร้อม GPS จำลอง');
+  const c0 = map.getCenter();
+  map.setView(c0, 18, {animate:false}); follow = false;
+  let k = 0, dist = 0;
+  demoTimer = setInterval(() => {
+    k++;
+    // slower in the bends, faster on the straights
+    const per = 120 + 2*Math.PI*20, d = (dist/10) % per;
+    const bend = (d > 60 && d < 60 + Math.PI*20) || d > 120 + Math.PI*20;
+    const spd = Math.max(0, (bend ? 28 : 55) + Math.random() * 4);
+    dist += spd / 3.6 * 0.25 * 10;
+    const sp = Math.round(spd * 100), ds = Math.round(dist) & 0xffff;
+    onLive(decodeLive([6,1,12,0,0,0,0, sp>>8, sp&0xff, ds>>8, ds&0xff, 0x4d,0xf0,0,0,0]));
+    if (k % 4 === 0) {                                   // phone GPS: 1 fix per second, ~1 m noise
+      const p = ovalPoint(dist/10, c0), n = () => (Math.random() - 0.5) * 1.5e-5;
+      const f = {lat:p.lat + n(), lon:p.lon + n(), t:Date.now(), acc:4};
+      me.setLatLng([f.lat, f.lon]).addTo(map);
+      onFix(f);
+    }
+  }, 250);
+  mapInfo();
+};
+$('btnCsv').onclick = () => {
+  if (!samples.length) { msg('ยังไม่มีข้อมูล'); return; }
+  const csv = 'time,speed_kmh,accel_ms2,accel_g,distance_m,lat,lon\n' + samples.map(s =>
+    `${new Date(s.t).toISOString()},${s.spd.toFixed(2)},${s.acc.toFixed(3)},${(s.acc/G).toFixed(3)},${s.dist.toFixed(1)},${s.lat ?? ''},${s.lon ?? ''}`).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = `gsm020_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
+  a.click();
+};
+drawChart();
+}
+</script>
+</body>
+</html>

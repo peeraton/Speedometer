@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GSM020 Live</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+  :root{--bg:#0f1216;--card:#181d24;--line:#2a313b;--text:#e8edf2;--mut:#8a96a3}
+  *{box-sizing:border-box;min-width:0}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Noto Sans Thai",sans-serif}
+  header{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line)}
+  header h1{font-size:16px;margin:0;flex:1}
+  .live{font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;background:#333;color:#aaa}
+  .live.on{background:#e74c3c;color:#fff;animation:pulse 1.6s infinite}
+  @keyframes pulse{50%{opacity:.55}}
+  @media (prefers-reduced-motion:reduce){.live.on{animation:none}}
+  .top{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:center;padding:10px 14px}
+  .big{font-size:clamp(56px,16vw,110px);font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+  .big small{font-size:16px;font-weight:600;color:var(--mut);margin-left:4px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .st{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 10px}
+  .st b{display:block;font-size:18px;font-variant-numeric:tabular-nums}
+  .st span{font-size:11px;color:var(--mut)}
+  #status{padding:0 14px;font-size:12px;color:#f1c40f;min-height:16px}
+  .sec{margin:8px 14px 4px;font-size:13px;color:var(--mut)}
+  .fig{position:relative;height:200px;margin:0 14px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+  .fig canvas{position:absolute;inset:0;width:100%;height:100%}
+  #mapWrap{display:none}
+  #map{height:45vh;margin:0 14px;border-radius:12px;border:1px solid var(--line)}
+  .legend{display:flex;align-items:center;gap:8px;padding:8px 14px 14px;font-size:12px;color:var(--mut)}
+  .grad{flex:1;height:8px;border-radius:4px;background:linear-gradient(90deg,#2ecc71,#f1c40f,#e67e22,#e74c3c)}
+  .join{max-width:420px;margin:15vh auto;padding:20px}
+  .join input{width:100%;font-size:18px;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);letter-spacing:2px}
+  .join button{margin-top:10px;width:100%;font-size:16px;padding:12px;border-radius:10px;border:0;background:#3fa7ff;color:#fff;font-weight:700}
+  @media (min-width:900px){.top{grid-template-columns:auto minmax(0,560px)}.fig{height:260px}}
+</style>
+</head>
+<body>
+<div class="join" id="join" hidden>
+  <h2>ดูความเร็วสด GSM020</h2>
+  <p style="color:var(--mut)">ใส่รหัสห้องจากแอป หรือเปิดจากลิงก์ที่ได้รับ</p>
+  <input id="roomIn" placeholder="รหัสห้อง" autocomplete="off" autocapitalize="off">
+  <button id="joinBtn">เข้าดู</button>
+</div>
+
+<div id="app" hidden>
+  <header><h1>GSM020 Live <span id="roomLbl" style="color:var(--mut);font-weight:400;font-size:12px"></span></h1><span class="live" id="live">OFFLINE</span></header>
+  <div class="top">
+    <div class="big"><span id="spd">0.0</span><small>km/h</small></div>
+    <div class="grid">
+      <div class="st"><b id="max">0.0</b><span>สูงสุด km/h</span></div>
+      <div class="st"><b id="avg">0.0</b><span>เฉลี่ย km/h</span></div>
+      <div class="st"><b id="acc">0.00</b><span>ความเร่ง g</span></div>
+      <div class="st"><b id="dist">0</b><span>ระยะทาง m</span></div>
+    </div>
+  </div>
+  <div id="status"></div>
+  <div class="sec">ความเร็วตามเวลา</div>
+  <div class="fig"><canvas id="chart"></canvas></div>
+  <div id="mapWrap">
+    <div class="sec">แผนที่</div>
+    <div id="map"></div>
+  </div>
+  <div class="legend"><span>ช้า</span><div class="grad"></div><span>เร็ว (<span id="lg">0</span> km/h)</span></div>
+</div>
+
+<script>
+{
+const $ = id => document.getElementById(id);
+const BROKER = 'wss://broker.emqx.io:8084/mqtt';
+const ROOT = 'gsm020tracker';
+const room = decodeURIComponent(location.hash.slice(1)).trim();
+
+if (!room) {
+  $('join').hidden = false;
+  const go = () => { const r = $('roomIn').value.trim(); if (r) { location.hash = r; location.reload(); } };
+  $('joinBtn').onclick = go;
+  $('roomIn').onkeydown = e => { if (e.key === 'Enter') go(); };
+} else {
+  start(room);
+}
+
+function start(room) {
+  $('app').hidden = false;
+  $('roomLbl').textContent = '#' + room;
+
+  let pts = [];   // {t, spd, lat?, lon?}
+  let maxSpd = 0, lastMsg = 0, follow = true, map = null, trackLayer = null, car = null, segs = [];
+
+  const stops = [[46,204,113],[241,196,15],[230,126,34],[231,76,60]];
+  const color = v => {
+    const r = Math.max(0, Math.min(1, maxSpd > 0 ? v / maxSpd : 0));
+    const x = r * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(x)), f = x - i;
+    return `rgb(${stops[i].map((a, j) => Math.round(a + (stops[i+1][j] - a) * f))})`;
+  };
+
+  // ---- chart ----
+  const cv = $('chart');
+  let pending = false;
+  const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; draw(); }); } };
+  function draw() {
+    const W = cv.clientWidth, H = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+    cv.width = W * dpr; cv.height = H * dpr;
+    const g = cv.getContext('2d'); g.scale(dpr, dpr);
+    const pad = {l:34, r:8, t:10, b:20};
+    const view = pts.length > 1500 ? pts.slice(-1500) : pts;
+    const top = Math.max(10, Math.ceil(maxSpd / 10) * 10);
+    g.font = '11px system-ui'; g.fillStyle = '#8a96a3'; g.strokeStyle = '#2a313b'; g.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.t + (H - pad.t - pad.b) * i / 4;
+      g.beginPath(); g.moveTo(pad.l, y); g.lineTo(W - pad.r, y); g.stroke();
+      g.fillText(String(Math.round(top * (1 - i/4))), 4, y + 4);
+    }
+    if (view.length < 2) return;
+    const ta = view[0].t, span = Math.max(1, view[view.length-1].t - ta);
+    const X = t => pad.l + (W - pad.l - pad.r) * (t - ta) / span;
+    const Y = v => pad.t + (H - pad.t - pad.b) * (1 - v / top);
+    g.lineWidth = 2.5; g.lineCap = 'round';
+    for (let i = 1; i < view.length; i++) {
+      if (view[i].t - view[i-1].t > 3000) continue; // gap
+      g.strokeStyle = color(view[i].spd);
+      g.beginPath(); g.moveTo(X(view[i-1].t), Y(view[i-1].spd)); g.lineTo(X(view[i].t), Y(view[i].spd)); g.stroke();
+    }
+    g.fillStyle = '#8a96a3';
+    const sec = Math.round(span / 1000);
+    g.fillText(`${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')} นาที`, W - pad.r - 60, H - 5);
+  }
+  new ResizeObserver(draw).observe(cv);
+
+  // ---- map (only when the sender has phone GPS on) ----
+  function ensureMap() {
+    if (map) return;
+    $('mapWrap').style.display = 'block';
+    map = L.map('map', {preferCanvas:true}).setView([13.7563,100.5018], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:20, attribution:'© OpenStreetMap'}).addTo(map);
+    trackLayer = L.layerGroup().addTo(map);
+    car = L.circleMarker([0,0], {radius:8, color:'#000', weight:2, fillColor:'#fff', fillOpacity:1});
+    map.on('dragstart', () => follow = false);
+    map.on('click', () => follow = true);
+  }
+  function addSeg(a, b) {
+    const s = L.polyline([[a.lat,a.lon],[b.lat,b.lon]], {color:color(b.spd), weight:5, opacity:.9}).addTo(trackLayer);
+    s.bindTooltip(`${b.spd.toFixed(1)} km/h`, {sticky:true});
+    segs.push({s, v:b.spd});
+  }
+  const recolor = () => segs.forEach(x => x.s.setStyle({color:color(x.v)}));
+  function redrawMap() {
+    const geo = pts.filter(p => p.lat !== undefined);
+    if (!geo.length) return;
+    ensureMap();
+    trackLayer.clearLayers(); segs = [];
+    for (let i = 1; i < geo.length; i++) addSeg(geo[i-1], geo[i]);
+    const l = geo[geo.length-1];
+    car.setLatLng([l.lat, l.lon]).addTo(map);
+    map.fitBounds(L.latLngBounds(geo.map(p => [p.lat, p.lon])).pad(0.2));
+  }
+
+  // ---- data ----
+  function setTrack(d) {
+    pts = (d.pts || []).map(r => r.length >= 4 ? {t:r[0], spd:r[1], lat:r[2], lon:r[3]} : {t:r[0], spd:r[1]});
+    maxSpd = Math.max(d.max || 0, ...pts.map(p => p.spd), 0);
+    $('max').textContent = maxSpd.toFixed(1);
+    $('dist').textContent = (d.dist ?? 0).toLocaleString();
+    $('lg').textContent = maxSpd.toFixed(0);
+    redrawMap(); schedule();
+  }
+
+  function onLive(d) {
+    if (d.end) { setLive(false, 'ผู้ส่งหยุดแชร์แล้ว'); return; }
+    lastMsg = Date.now(); setLive(true, '');
+    const p = {t:d.t || Date.now(), spd:d.spd};
+    if (typeof d.lat === 'number') { p.lat = d.lat; p.lon = d.lon; }
+    const rescale = d.spd > maxSpd * 1.1;
+    maxSpd = Math.max(maxSpd, d.max || 0, d.spd);
+    if (p.lat !== undefined) {
+      ensureMap();
+      const prevGeo = [...pts].reverse().find(q => q.lat !== undefined);
+      if (prevGeo && p.t - prevGeo.t < 5000) addSeg(prevGeo, p);
+      car.setLatLng([p.lat, p.lon]).addTo(map);
+      if (follow) map.setView([p.lat, p.lon], Math.max(map.getZoom(), 17), {animate:false});
+      if (rescale) recolor();
+    }
+    pts.push(p);
+    $('spd').textContent = d.spd.toFixed(1);
+    $('max').textContent = maxSpd.toFixed(1);
+    $('avg').textContent = (d.avg ?? 0).toFixed(1);
+    $('acc').textContent = (d.acc ?? 0).toFixed(2);
+    $('dist').textContent = (d.dist ?? 0).toLocaleString();
+    $('lg').textContent = maxSpd.toFixed(0);
+    schedule();
+  }
+
+  function setLive(on, m) {
+    $('live').className = 'live' + (on ? ' on' : '');
+    $('live').textContent = on ? 'LIVE' : 'OFFLINE';
+    $('status').textContent = m;
+  }
+
+  setLive(false, 'กำลังเชื่อมต่อ ...');
+  const client = mqtt.connect(BROKER, {clientId:'viewer-' + Math.random().toString(16).slice(2), clean:true, reconnectPeriod:2000});
+  client.on('connect', () => {
+    client.subscribe([`${ROOT}/${room}/live`, `${ROOT}/${room}/track`]);
+    setLive(false, 'เชื่อมต่อแล้ว รอข้อมูลจากรถ ...');
+  });
+  client.on('reconnect', () => setLive(false, 'กำลังเชื่อมต่อใหม่ ...'));
+  client.on('error', e => setLive(false, 'เชื่อมต่อไม่ได้: ' + e.message));
+  client.on('message', (topic, buf) => {
+    const txt = buf.toString();
+    if (topic.endsWith('/track')) {
+      if (!txt) { setTrack({pts:[]}); return; }
+      let d; try { d = JSON.parse(txt); } catch (e) { return; }
+      if (Array.isArray(d.pts) && d.pts.length >= pts.length) setTrack(d);
+      return;
+    }
+    let d; try { d = JSON.parse(txt); } catch (e) { return; }
+    onLive(d);
+  });
+  setInterval(() => {
+    if (lastMsg && Date.now() - lastMsg > 5000 && $('live').classList.contains('on'))
+      setLive(false, 'ไม่ได้รับข้อมูลเกิน 5 วินาที (รถอาจอยู่นอกระยะบลูทูธ หรือเน็ตหลุด)');
+  }, 1000);
+}
+}
+</script>
+</body>
+</html>

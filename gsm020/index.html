@@ -39,6 +39,21 @@
   #raw{font-family:ui-monospace,monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:30vh;overflow:auto;color:#b9c4cf}
   .spdlbl{transform:translate(-50%,-130%);font:700 12px system-ui,sans-serif;color:#111;padding:1px 5px;border-radius:7px;border:1.5px solid #111;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.4)}
   .spdlbl.max{background:#fff!important;border-color:#e74c3c;color:#e74c3c;font-size:13px}
+  .lap{margin:8px 12px 0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}
+  .lap .row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .lap .cur{font-size:clamp(34px,10vw,52px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+  .lap .kv{font-size:12px;color:var(--mut)} .lap .kv b{display:block;font-size:17px;color:var(--text);font-variant-numeric:tabular-nums}
+  .lap .btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .lap select{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px;font-size:14px;min-height:44px}
+  #lapInfo{font-size:12px;color:var(--warn);margin-top:6px}
+  table.laps{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px;font-variant-numeric:tabular-nums}
+  table.laps th{font-weight:600;color:var(--mut);font-size:12px;text-align:right;padding:4px 6px;border-bottom:1px solid var(--line)}
+  table.laps td{text-align:right;padding:5px 6px;border-bottom:1px solid var(--line)}
+  table.laps th:first-child,table.laps td:first-child{text-align:left}
+  tr.best td{color:var(--ok);font-weight:700}
+  .flash{animation:flash 1s ease-out}
+  @keyframes flash{0%{background:#2ecc7155}100%{background:transparent}}
+  @media (prefers-reduced-motion:reduce){.flash{animation:none}}
   #mapInfo{padding:4px 12px 0;font-size:12px;color:var(--warn)}
   .note{font-size:12px;color:var(--mut);line-height:1.5;padding:0 12px}
 </style>
@@ -65,6 +80,25 @@
   <div class="st"><b id="sDist">0</b><span>ระยะทาง m</span></div>
   <div class="st"><b id="sTime">0:00</b><span>เวลา</span></div>
   <div class="st"><b id="sMaxAcc">0.00</b><span>ความเร่งสูงสุด g</span></div>
+</div>
+
+<div class="lap" id="lapBox">
+  <div class="row">
+    <div><div class="kv">รอบปัจจุบัน</div><div class="cur" id="lapCur">--:--.-</div></div>
+    <div class="kv" style="margin-left:auto">รอบล่าสุด<b id="lapLast">-</b></div>
+    <div class="kv">ดีที่สุด<b id="lapBest" style="color:var(--ok)">-</b></div>
+    <div class="kv">รอบที่<b id="lapN">0</b></div>
+  </div>
+  <div class="btns">
+    <button class="pri" id="btnStart">ตั้งจุดสตาร์ทตรงนี้</button>
+    <select id="lapR" aria-label="รัศมีจุดสตาร์ท">
+      <option value="5">รัศมี 5 m</option><option value="8" selected>รัศมี 8 m</option>
+      <option value="12">รัศมี 12 m</option><option value="20">รัศมี 20 m</option>
+    </select>
+    <button id="btnLapClear">ล้างรอบ</button>
+  </div>
+  <div id="lapInfo"></div>
+  <table class="laps" id="lapTable" hidden><thead><tr><th>รอบ</th><th>เวลา</th><th>ต่างจากดีสุด</th><th>สูงสุด</th><th>เฉลี่ย</th></tr></thead><tbody></tbody></table>
 </div>
 
 <div class="sec"><span>ความเร็วตามเวลา</span><span id="chartInfo"></span></div>
@@ -118,6 +152,7 @@ function resetRun() {
   fixes = []; assignIdx = 0; lastLabelDist = -1e9; maxPlaced = null; nFix = 0;
   if (maxMarker) { maxMarker.remove(); maxMarker = null; }
   trackLayer.clearLayers(); drawn = []; drawChart(); updateStats(null);
+  if (typeof clearLaps === 'function') clearLaps();
 }
 
 function onLive(rec) {
@@ -258,6 +293,7 @@ function addMapPoint(s) {
     if (maxMarker) maxMarker.setLatLng([s.lat, s.lon]).setIcon(ic);
     else maxMarker = L.marker([s.lat, s.lon], {icon:ic, zIndexOffset:1000, interactive:false}).addTo(map);
   }
+  lapFeed(s);
   if (drawn.length % 20 === 0) drawn.forEach(d => { const k = color(d.s.spd); d.seg && d.seg.setStyle({color:k}); d.dot.setStyle({fillColor:k}); });
 }
 let gpsErr = null;
@@ -418,6 +454,7 @@ $('btnDemo').onclick = () => {
   msg('โหมดทดลอง: ข้อมูลจำลองรูปแบบเดียวกับ GSM020 พร้อม GPS จำลอง');
   const c0 = map.getCenter();
   map.setView(c0, 18, {animate:false}); follow = false;
+  const sp0 = ovalPoint(30, c0); setStart(sp0.lat, sp0.lon, false);   // demo start line, not saved
   let k = 0, dist = 0;
   demoTimer = setInterval(() => {
     k++;
@@ -446,6 +483,95 @@ $('btnCsv').onclick = () => {
   a.download = `gsm020_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
   a.click();
 };
+// ---------- lap timing ----------
+// A lap is counted each time the car passes the start point: when it leaves the
+// start circle, the moment of closest approach inside the circle is the crossing.
+// A new lap needs >= 20 m of GSM020 distance and >= 3 s since the last crossing.
+const MIN_LAP_M = 20, MIN_LAP_MS = 3000;
+let start = null, startMarker = null, startCircle = null;
+let lapIn = false, lapMinD = Infinity, lapMinS = null, lastCross = null, laps = [];
+try { const j = JSON.parse(localStorage.getItem('gsm020start') || 'null'); if (j && isFinite(j.lat)) start = j; } catch (e) {}
+const fmtLap = ms => { if (ms == null) return '-'; const t = ms / 1000, m = Math.floor(t / 60); return `${m}:${(t - m*60).toFixed(1).padStart(4,'0')}`; };
+function distM2(a, b) {
+  const R = 6371000, k = Math.PI/180, dLat = (b.lat-a.lat)*k, dLon = (b.lon-a.lon)*k;
+  const h = Math.sin(dLat/2)**2 + Math.cos(a.lat*k)*Math.cos(b.lat*k)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+function drawStart() {
+  if (startMarker) { startMarker.remove(); startCircle.remove(); startMarker = startCircle = null; }
+  if (!start) return;
+  startCircle = L.circle([start.lat, start.lon], {radius:start.r, color:'#fff', weight:2, dashArray:'6 5', fillColor:'#fff', fillOpacity:0.12, interactive:false}).addTo(map);
+  startMarker = L.marker([start.lat, start.lon], {interactive:false, zIndexOffset:900, icon:L.divIcon({className:'', iconSize:null,
+    html:'<div class="spdlbl" style="background:#fff;border-color:#111">🏁 สตาร์ท</div>'})}).addTo(map);
+}
+function setStart(lat, lon, save) {
+  start = {lat, lon, r: Number($('lapR').value)};
+  if (save) { try { localStorage.setItem('gsm020start', JSON.stringify(start)); } catch (e) {} }
+  lapIn = false; lapMinD = Infinity; lapMinS = null; lastCross = null;
+  drawStart(); lapUi();
+}
+function clearLaps() { laps = []; lastCross = null; lapIn = false; lapMinD = Infinity; lapMinS = null; lapUi(); }
+function lapFeed(s) {
+  if (!start || s.lat === undefined) return;
+  const d = distM2(s, start);
+  if (d <= start.r) {
+    if (!lapIn) { lapIn = true; lapMinD = Infinity; }
+    if (d < lapMinD) { lapMinD = d; lapMinS = s; }
+  } else if (lapIn) {
+    lapIn = false;
+    if (lapMinS) onCross(lapMinS);
+    lapMinS = null;
+  }
+}
+function onCross(c) {
+  if (!lastCross) { lastCross = c; lapUi('เริ่มจับเวลารอบแรกแล้ว'); return; }
+  if (c.dist - lastCross.dist < MIN_LAP_M || c.t - lastCross.t < MIN_LAP_MS) return;  // jitter at the line
+  const seg = samples.filter(x => x.t >= lastCross.t && x.t <= c.t);
+  laps.push({n: laps.length + 1, ms: c.t - lastCross.t,
+             max: Math.max(...seg.map(x => x.spd)), avg: seg.reduce((a, x) => a + x.spd, 0) / Math.max(1, seg.length),
+             dist: c.dist - lastCross.dist});
+  lastCross = c;
+  try { navigator.vibrate && navigator.vibrate(150); } catch (e) {}
+  $('lapBox').classList.remove('flash'); void $('lapBox').offsetWidth; $('lapBox').classList.add('flash');
+  lapUi();
+}
+function lapUi(note) {
+  const best = laps.length ? Math.min(...laps.map(l => l.ms)) : null;
+  $('lapLast').textContent = laps.length ? fmtLap(laps[laps.length-1].ms) : '-';
+  $('lapBest').textContent = fmtLap(best);
+  $('lapN').textContent = laps.length;
+  const tb = $('lapTable');
+  tb.hidden = !laps.length;
+  tb.tBodies[0].innerHTML = laps.slice().reverse().map(l => {
+    const dlt = l.ms - best;
+    return `<tr class="${l.ms === best ? 'best' : ''}"><td>${l.n}</td><td>${fmtLap(l.ms)}</td>` +
+           `<td>${l.ms === best ? 'ดีที่สุด' : '+' + (dlt/1000).toFixed(1) + ' s'}</td>` +
+           `<td>${l.max.toFixed(1)}</td><td>${l.avg.toFixed(1)}</td></tr>`;
+  }).join('');
+  let info = note || '';
+  if (!info) {
+    if (!start) info = 'วางรถที่เส้นสตาร์ท แล้วกด "ตั้งจุดสตาร์ทตรงนี้" (หรือกดค้างบนแผนที่ตรงเส้นสตาร์ท)';
+    else if (!demoTimer && gpsWatch === null) info = 'ต้องเปิด GPS มือถือจึงจะจับเวลาได้';
+    else if (!lastCross) info = 'พร้อมแล้ว จะเริ่มจับเวลาเมื่อรถผ่านจุดสตาร์ทครั้งแรก';
+  }
+  $('lapInfo').textContent = info;
+}
+$('btnStart').onclick = () => {
+  if (!gps) { lapUi('ยังไม่มีตำแหน่งมือถือ: เปิด GPS มือถือแล้วรอสักครู่'); return; }
+  if (gps.acc > 15) lapUi(`ตำแหน่งตอนนี้คลาด ±${Math.round(gps.acc)} m ถ้ารอให้ต่ำกว่า 15 m แล้วกดใหม่จะแม่นกว่า`);
+  setStart(gps.lat, gps.lon, true);
+  if (gps.acc <= 15) lapUi('ตั้งจุดสตาร์ทแล้ว');
+};
+map.on('contextmenu', e => { setStart(e.latlng.lat, e.latlng.lng, true); lapUi('ตั้งจุดสตาร์ทจากแผนที่แล้ว'); });
+$('lapR').onchange = () => { if (start) { start.r = Number($('lapR').value); try { localStorage.setItem('gsm020start', JSON.stringify(start)); } catch (e) {} drawStart(); } };
+$('btnLapClear').onclick = () => clearLaps();
+if (start) { $('lapR').value = String(start.r); drawStart(); }
+setInterval(() => {
+  // running time: lastCross is about 1-2 s late (positions lag), but its timestamp is exact
+  $('lapCur').textContent = lastCross ? fmtLap(Date.now() - lastCross.t) : '--:--.-';
+}, 100);
+lapUi();
+
 drawChart();
 }
 </script>

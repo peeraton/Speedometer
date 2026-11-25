@@ -130,8 +130,8 @@
   </div>
   <div class="lap" id="lapBox" hidden>
     <div class="row">
-      <div><div class="kv" id="lapNo">รอบปัจจุบัน</div><div class="cur" id="lapCur">--:--.--</div></div>
-      <div class="kv"><span id="dLbl">ต่างจากรอบดีที่สุด</span><b id="lapD">-</b></div>
+      <div><div class="kv" id="dLbl">ต่างจากรอบดีที่สุด</div><div id="lapD" style="font-size:clamp(26px,8vw,48px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1">-</div>
+        <div class="kv" id="lapNo" style="margin-top:4px">รอบปัจจุบัน</div><div class="cur" id="lapCur">--:--.--</div></div>
       <div class="kv">รอบล่าสุด<b id="lapLast">-</b><span id="lapLastD"></span></div>
       <div class="kv">ดีที่สุด<b id="lapBest" class="neg">-</b><span id="lapBestN"></span></div>
     </div>
@@ -164,8 +164,7 @@
 <div id="mapBox">
 <div id="map"></div>
 <div class="hud hud-top"><div class="pane">
-  <div><span class="lbl" id="hLapNo">รอบปัจจุบัน</span><span class="big" id="hCur">--:--.--</span></div>
-  <div><span class="lbl" id="hDLbl">ต่างจากดีสุด</span><span class="mid" id="hD">-</span></div>
+  <div><span class="lbl" id="hDLbl">ต่างจากดีสุด</span><span class="big" id="hD">-</span><span class="lbl" id="hLapNo" style="margin-top:4px">รอบปัจจุบัน</span><span class="big" id="hCur">--:--.--</span></div>
   <div><span class="lbl">ล่าสุด</span><span class="mid" id="hLast">-</span></div>
   <div><span class="lbl">ดีที่สุด</span><span class="mid neg" id="hBest">-</span></div>
   <div class="chips" id="hSecs" style="flex-basis:100%"></div>
@@ -582,7 +581,7 @@ function start(room) {
     $('hLapNo').textContent = $('lapNo').textContent;
     $('hCur').textContent = $('lapCur').textContent;
     $('hDLbl').textContent = $('dLbl').textContent;
-    $('hD').textContent = $('lapD').textContent; $('hD').className = 'mid ' + ($('lapD').classList.contains('neg') ? 'neg' : $('lapD').classList.contains('pos') ? 'pos' : '');
+    $('hD').textContent = $('lapD').textContent; $('hD').className = 'big ' + ($('lapD').classList.contains('neg') ? 'neg' : $('lapD').classList.contains('pos') ? 'pos' : '');
     $('hLast').textContent = $('lapLast').textContent;
     $('hBest').textContent = $('lapBest').textContent;
     $('hSecs').innerHTML = $('secNow').innerHTML; $('hSecs').style.display = $('secNow').innerHTML ? '' : 'none';

@@ -6,6 +6,7 @@
 <title>GSM020 Speed Tracker</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <style>
   :root{--bg:#0f1216;--card:#181d24;--line:#2a313b;--text:#e8edf2;--mut:#8a96a3;--acc:#3fa7ff;--ok:#2ecc71;--bad:#ff5a5f;--warn:#f1c40f}
   *{box-sizing:border-box;min-width:0}
@@ -72,6 +73,8 @@
   #tv.flash .cur{color:var(--ok)}
   .neg{color:var(--ok)} .pos{color:#ff6b6b}
   @media (orientation:landscape){#tv .main{flex-direction:row;gap:5vw}}
+  #liveBox .link{font-size:13px;color:var(--acc);word-break:break-all;margin-top:6px}
+  #liveBox .on{background:#e74c3c;border-color:#e74c3c;color:#fff;font-weight:700}
   #mapInfo{padding:4px 12px 0;font-size:12px;color:var(--warn)}
   .note{font-size:12px;color:var(--mut);line-height:1.5;padding:0 12px}
 </style>
@@ -121,6 +124,18 @@
   </div>
   <div id="lapInfo"></div>
   <table class="laps" id="lapTable" hidden><thead><tr><th>รอบ</th><th>เวลา</th><th id="thDelta">ต่างจากดีสุด</th><th>สูงสุด</th><th>เฉลี่ย</th></tr></thead><tbody></tbody></table>
+</div>
+
+<div class="lap" id="liveBox">
+  <div class="row"><b style="font-size:15px">ถ่ายทอดสดให้เครื่องอื่นดู</b><span class="kv" id="liveStatus" style="margin-left:auto">ปิดอยู่</span></div>
+  <div class="btns">
+    <button id="btnLive">● เริ่มถ่ายทอดสด</button>
+    <button id="btnLiveShare">ส่งลิงก์</button>
+    <button id="btnLiveCopy">คัดลอกลิงก์</button>
+    <button id="btnLiveRoom">เปลี่ยนรหัสห้อง</button>
+  </div>
+  <div class="link" id="liveLink"></div>
+  <div class="kv" style="margin-top:6px">คนที่มีลิงก์จะเห็นความเร็ว เส้นทาง ตำแหน่ง และเวลาต่อรอบแบบสด เปลี่ยนรหัสห้องเมื่อไม่อยากให้ลิงก์เดิมใช้ได้</div>
 </div>
 
 <div class="sec"><span>ความเร็วตามเวลา</span><span id="chartInfo"></span></div>
@@ -690,6 +705,78 @@ function tvTick() {
 }
 setInterval(tvTick, 100);
 setRef(refMode);
+
+// ---------- live broadcast (MQTT over WebSocket; viewer = viewer/index.html) ----------
+const BROKER = 'wss://broker.emqx.io:8084/mqtt', ROOT = 'gsm020tracker';
+let room = null, mq = null, liveOn = false, lastPubLive = 0, lastPubTrack = 0, liveWake = null;
+try { room = localStorage.getItem('gsm020room'); } catch (e) {}
+const newRoom = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), b => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('');
+if (!room) { room = newRoom(); try { localStorage.setItem('gsm020room', room); } catch (e) {} }
+const viewerUrl = () => location.origin + location.pathname.replace(/[^/]*$/, '') + 'viewer/#' + room;
+function liveUi(st) {
+  if (st) $('liveStatus').textContent = st;
+  $('btnLive').textContent = liveOn ? '■ หยุดถ่ายทอดสด' : '● เริ่มถ่ายทอดสด';
+  $('btnLive').classList.toggle('on', liveOn);
+  $('btnLiveRoom').disabled = liveOn;
+  $('liveLink').textContent = viewerUrl();
+}
+const pub = (sub, obj, retain) => { if (mq && mq.connected) mq.publish(`${ROOT}/${room}/${sub}`, obj === '' ? '' : JSON.stringify(obj), {qos:0, retain:!!retain}); };
+const r1 = (v, d) => Math.round(v * 10**d) / 10**d;
+function lapState() {
+  const best = laps.length ? laps.reduce((a, l) => l.ms < a.ms ? l : a) : null, last = laps[laps.length - 1];
+  return { n: laps.length, el: lastCross ? Date.now() - lastCross.t : null, ref: refMode,
+           last: last ? last.ms : null, prev: laps.length > 1 ? laps[laps.length - 2].ms : null,
+           best: best ? best.ms : null, bestN: best ? best.n : null, d: liveDelta(),
+           start: start ? {lat:start.lat, lon:start.lon, r:start.r} : null };
+}
+function publishTrack() {
+  lastPubTrack = Date.now();
+  const step = Math.max(1, Math.ceil(samples.length / 1500));
+  const rows = [];
+  for (let i = 0; i < samples.length; i += step) {
+    const x = samples[i];
+    rows.push(x.lat !== undefined ? [x.t, r1(x.spd,1), r1(x.lat,6), r1(x.lon,6)] : [x.t, r1(x.spd,1)]);
+  }
+  pub('track', {max:r1(maxSpd,1), dist:Math.round(distM), pts:rows,
+                laps: laps.map(l => [l.n, l.ms, r1(l.max,1), r1(l.avg,1)]), lap: lapState()}, true);
+}
+function liveTick() {
+  if (!liveOn || !mq || !mq.connected) return;
+  const s = samples[samples.length - 1], now = Date.now();
+  if (now - lastPubLive >= 200) {
+    lastPubLive = now;
+    const g = gps && now - gps.t < 5000 ? gps : null;
+    pub('live', { t: now, spd: s ? r1(s.spd,1) : 0, acc: s ? r1(s.acc / G, 2) : 0, max: r1(maxSpd,1),
+                  avg: samples.length ? r1(samples.reduce((a,x)=>a+x.spd,0)/samples.length,1) : 0,
+                  dist: Math.round(distM), sats: Number($('sSats').textContent) || 0,
+                  ...(g ? {lat: r1(g.lat,7), lon: r1(g.lon,7)} : {}), lap: lapState() });
+  }
+  if (now - lastPubTrack >= 5000) publishTrack();
+}
+setInterval(liveTick, 200);
+async function startLive() {
+  if (typeof mqtt === 'undefined') { liveUi('โหลดระบบถ่ายทอดสดไม่ได้ (ต้องมีอินเทอร์เน็ต)'); return; }
+  liveOn = true; liveUi('กำลังเชื่อมต่อเซิร์ฟเวอร์ ...');
+  mq = mqtt.connect(BROKER, {clientId:'gsm020-' + room + '-' + Math.random().toString(16).slice(2,8), clean:true, reconnectPeriod:2000});
+  mq.on('connect', () => { liveUi('🔴 กำลังถ่ายทอดสด'); publishTrack(); });
+  mq.on('reconnect', () => liveUi('เน็ตหลุด กำลังต่อใหม่ ...'));
+  mq.on('error', e => liveUi('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้: ' + e.message));
+  try { liveWake = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+function stopLive() {
+  if (mq) { pub('live', {end:true}); pub('track', '', true); const m = mq; setTimeout(() => m.end(true), 400); }
+  mq = null; liveOn = false;
+  try { liveWake && liveWake.release(); } catch (e) {}
+  liveWake = null; liveUi('ปิดอยู่');
+}
+$('btnLive').onclick = () => liveOn ? stopLive() : startLive();
+$('btnLiveRoom').onclick = () => { room = newRoom(); try { localStorage.setItem('gsm020room', room); } catch (e) {} liveUi('เปลี่ยนรหัสห้องแล้ว ลิงก์เดิมใช้ไม่ได้อีก'); };
+$('btnLiveCopy').onclick = async () => { try { await navigator.clipboard.writeText(viewerUrl()); liveUi('คัดลอกลิงก์แล้ว'); } catch (e) { liveUi('คัดลอกไม่ได้ กดค้างที่ลิงก์เพื่อคัดลอก'); } };
+$('btnLiveShare').onclick = async () => {
+  try { await navigator.share({title:'GSM020 Live', text:'ดูความเร็วและเวลาต่อรอบสด', url:viewerUrl()}); }
+  catch (e) { $('btnLiveCopy').onclick(); }
+};
+liveUi();
 
 drawChart();
 }

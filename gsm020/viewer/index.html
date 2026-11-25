@@ -24,6 +24,19 @@
   .st{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 10px}
   .st b{display:block;font-size:18px;font-variant-numeric:tabular-nums}
   .st span{font-size:11px;color:var(--mut)}
+  .lap{margin:4px 14px 0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+  .lap .row{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+  .lap .cur{font-size:clamp(44px,13vw,90px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+  .lap .kv{font-size:12px;color:var(--mut)} .lap .kv b{display:block;font-size:clamp(18px,5vw,28px);color:var(--text);font-variant-numeric:tabular-nums}
+  .neg{color:#2ecc71!important} .pos{color:#ff6b6b!important}
+  table.laps{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px;font-variant-numeric:tabular-nums}
+  table.laps th{font-weight:600;color:var(--mut);font-size:12px;text-align:right;padding:4px 6px;border-bottom:1px solid var(--line)}
+  table.laps td{text-align:right;padding:5px 6px;border-bottom:1px solid var(--line)}
+  table.laps th:first-child,table.laps td:first-child{text-align:left}
+  tr.best td{color:#2ecc71;font-weight:700}
+  .lap.flash{animation:fl 1.2s ease-out}@keyframes fl{0%{background:#2ecc7155}}
+  @media (prefers-reduced-motion:reduce){.lap.flash{animation:none}}
+  .startlbl{transform:translate(-50%,-130%);font:700 12px system-ui;background:#fff;color:#111;border:1.5px solid #111;border-radius:7px;padding:1px 5px;white-space:nowrap}
   #status{padding:0 14px;font-size:12px;color:#f1c40f;min-height:16px}
   .sec{margin:8px 14px 4px;font-size:13px;color:var(--mut)}
   .fig{position:relative;height:200px;margin:0 14px;background:var(--card);border:1px solid var(--line);border-radius:12px}
@@ -56,6 +69,15 @@
       <div class="st"><b id="acc">0.00</b><span>ความเร่ง g</span></div>
       <div class="st"><b id="dist">0</b><span>ระยะทาง m</span></div>
     </div>
+  </div>
+  <div class="lap" id="lapBox" hidden>
+    <div class="row">
+      <div><div class="kv" id="lapNo">รอบปัจจุบัน</div><div class="cur" id="lapCur">--:--.-</div></div>
+      <div class="kv"><span id="dLbl">ต่างจากรอบดีที่สุด</span><b id="lapD">-</b></div>
+      <div class="kv">รอบล่าสุด<b id="lapLast">-</b><span id="lapLastD"></span></div>
+      <div class="kv">ดีที่สุด<b id="lapBest" class="neg">-</b><span id="lapBestN"></span></div>
+    </div>
+    <table class="laps" id="lapTable" hidden><thead><tr><th>รอบ</th><th>เวลา</th><th id="thD">ต่างจากดีสุด</th><th>สูงสุด</th><th>เฉลี่ย</th></tr></thead><tbody></tbody></table>
   </div>
   <div id="status"></div>
   <div class="sec">ความเร็วตามเวลา</div>
@@ -158,6 +180,57 @@ function start(room) {
     map.fitBounds(L.latLngBounds(geo.map(p => [p.lat, p.lon])).pad(0.2));
   }
 
+
+  // ---- laps (sent by the tracker) ----
+  let lap = null, lapRecv = 0, lapRows = [], lastN = 0, startMk = null, startCirc = null;
+  const fmtLap = ms => { if (ms == null) return '-'; const t = ms/1000, m = Math.floor(t/60); return `${m}:${(t-m*60).toFixed(1).padStart(4,'0')}`; };
+  const fmtD = ms => ms == null ? '-' : (ms < 0 ? '-' : '+') + (Math.abs(ms)/1000).toFixed(2) + ' s';
+  const tone = (el, ms) => { el.classList.toggle('neg', ms != null && ms < 0); el.classList.toggle('pos', ms != null && ms > 0); };
+  function setLap(l) {
+    if (!l) return;
+    lap = l; lapRecv = Date.now();
+    $('lapBox').hidden = !(l.start || l.n);
+    const prevMode = l.ref === 'prev';
+    $('dLbl').textContent = prevMode ? 'ต่างจากรอบที่แล้ว' : 'ต่างจากรอบดีที่สุด';
+    $('thD').textContent = prevMode ? 'ต่างจากรอบก่อน' : 'ต่างจากดีสุด';
+    $('lapNo').textContent = l.el == null ? 'รอผ่านจุดสตาร์ท' : `รอบที่ ${l.n + 1}`;
+    $('lapD').textContent = fmtD(l.d); tone($('lapD'), l.d);
+    $('lapLast').textContent = fmtLap(l.last);
+    const ld = l.last == null ? null : prevMode ? (l.prev == null ? null : l.last - l.prev) : (l.best === l.last ? null : l.last - l.best);
+    $('lapLastD').textContent = ld == null ? '' : fmtD(ld); tone($('lapLastD'), ld);
+    $('lapBest').textContent = fmtLap(l.best);
+    $('lapBestN').textContent = l.bestN ? `รอบที่ ${l.bestN}` : '';
+    if (l.n > lastN && lastN) { $('lapBox').classList.remove('flash'); void $('lapBox').offsetWidth; $('lapBox').classList.add('flash'); }
+    if (l.n > lapRows.length) {   // a lap finished since the last snapshot: add it from the live data
+      lapRows.push([l.n, l.last, null, null]);
+      drawLapTable();
+    }
+    lastN = l.n;
+    if (l.start) drawStart(l.start);
+  }
+  function drawLapTable() {
+    const tb = $('lapTable'); tb.hidden = !lapRows.length;
+    const best = lapRows.length ? Math.min(...lapRows.map(r => r[1])) : null, prevMode = lap && lap.ref === 'prev';
+    tb.tBodies[0].innerHTML = lapRows.slice().reverse().map(r => {
+      const d = prevMode ? (r[0] > 1 ? r[1] - lapRows[r[0]-2][1] : null) : (r[1] === best ? null : r[1] - best);
+      const cell = d == null ? (r[1] === best && !prevMode ? 'ดีที่สุด' : '-') : fmtD(d);
+      return `<tr class="${r[1] === best ? 'best' : ''}"><td>${r[0]}</td><td>${fmtLap(r[1])}</td>` +
+             `<td class="${d == null ? '' : d < 0 ? 'neg' : 'pos'}">${cell}</td>` +
+             `<td>${r[2] == null ? '' : r[2].toFixed(1)}</td><td>${r[3] == null ? '' : r[3].toFixed(1)}</td></tr>`;
+    }).join('');
+  }
+  function drawStart(st) {
+    ensureMap();
+    if (startMk) { startMk.remove(); startCirc.remove(); }
+    startCirc = L.circle([st.lat, st.lon], {radius:st.r, color:'#fff', weight:2, dashArray:'6 5', fillOpacity:0.1, interactive:false}).addTo(map);
+    startMk = L.marker([st.lat, st.lon], {interactive:false, icon:L.divIcon({className:'', iconSize:null, html:'<div class="startlbl">🏁 สตาร์ท</div>'})}).addTo(map);
+  }
+  setInterval(() => {
+    if (!lap || lap.el == null) { $('lapCur').textContent = '--:--.-'; return; }
+    const live = $('live').classList.contains('on');
+    $('lapCur').textContent = fmtLap(lap.el + (live ? Date.now() - lapRecv : 0));
+  }, 100);
+
   // ---- data ----
   function setTrack(d) {
     pts = (d.pts || []).map(r => r.length >= 4 ? {t:r[0], spd:r[1], lat:r[2], lon:r[3]} : {t:r[0], spd:r[1]});
@@ -166,6 +239,8 @@ function start(room) {
     $('dist').textContent = (d.dist ?? 0).toLocaleString();
     $('lg').textContent = maxSpd.toFixed(0);
     redrawMap(); schedule();
+    if (Array.isArray(d.laps)) { lapRows = d.laps.slice(); drawLapTable(); }
+    if (d.lap) setLap(d.lap);
   }
 
   function onLive(d) {
@@ -190,6 +265,7 @@ function start(room) {
     $('acc').textContent = (d.acc ?? 0).toFixed(2);
     $('dist').textContent = (d.dist ?? 0).toLocaleString();
     $('lg').textContent = maxSpd.toFixed(0);
+    if (d.lap) setLap(d.lap);
     schedule();
   }
 

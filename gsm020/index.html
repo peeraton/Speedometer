@@ -98,12 +98,15 @@
   #atv .grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   .brk{transform:translate(-50%,-130%);font:700 12px system-ui,sans-serif;background:#e74c3c;color:#fff;padding:2px 6px;border-radius:7px;border:1.5px solid #fff;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.5)}
   .brk.old{opacity:.45}
+  .sess{padding:8px 0;border-top:1px solid var(--line)}
+  .sess.open b{color:var(--warn)}
+  .sess .btns button{min-height:38px;padding:6px 10px;font-size:13px}
   #mapInfo{padding:4px 12px 0;font-size:12px;color:var(--warn)}
   .note{font-size:12px;color:var(--mut);line-height:1.5;padding:0 12px}
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-14</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-15</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -112,6 +115,10 @@
   <button id="btnDemo">โหมดทดลอง</button>
 </div>
 <div id="msg"></div>
+<div id="viewBanner" hidden style="margin:0 12px 8px;padding:10px 12px;border-radius:12px;background:#3a2a07;border:1px solid var(--warn)">
+  <b>📂 กำลังดูข้อมูลที่บันทึกไว้:</b> <span id="viewName"></span> <span class="kv" id="viewWhen"></span>
+  <div class="btns" style="margin-top:6px"><button class="pri" id="btnCloseView">ปิด · กลับไปใช้งานปกติ</button></div>
+</div>
 
 <div class="hero">
   <div class="big" id="sSpeed">0.0</div><div class="unit">km/h</div>
@@ -138,6 +145,20 @@
   </div>
   <div class="note" style="padding:6px 0 0">ค่าเริ่มต้นเหมาะกับรถ RC 1/10 (2.0 kg, CdA 0.016, Crr 0.02) รถ 1/8 ลองน้ำหนัก 3.5–4.5 kg, CdA 0.03 · แก้แล้วคำนวณใหม่ทั้งรอบทันที</div>
 </details>
+
+<div class="lap" id="sessBox">
+  <b style="font-size:15px">บันทึก · เปิดดูย้อนหลัง</b>
+  <div class="btns" style="align-items:center">
+    <input id="sessName" type="text" placeholder="ตั้งชื่อ (ไม่ใส่ก็ได้)" style="flex:1;min-width:10em;font-size:16px;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);min-height:44px">
+    <button class="pri" id="btnSave">💾 บันทึก</button>
+    <button id="btnSaveFile">⬇ ดาวน์โหลดเป็นไฟล์</button>
+    <button id="btnOpenFile">📂 เปิดไฟล์</button>
+    <input type="file" id="sessFile" accept=".json,application/json" hidden>
+  </div>
+  <div class="kv" id="sessInfo" style="margin-top:6px;color:var(--warn)"></div>
+  <div id="sessList" style="margin-top:8px"></div>
+  <div class="kv" style="margin-top:6px">ข้อมูลเก็บในเบราว์เซอร์ของมือถือเครื่องนี้ และบันทึกอัตโนมัติทุก 30 วินาทีระหว่างวิ่ง ถ้าจะเก็บถาวรหรือส่งต่อให้คนอื่น ให้ดาวน์โหลดเป็นไฟล์</div>
+</div>
 
 <div class="lap" id="accBox">
   <div class="btns" style="margin-top:0;align-items:center"><b style="font-size:15px">จับเวลาอัตราเร่ง</b>
@@ -309,6 +330,7 @@ function resetRun() {
 }
 
 function onLive(rec) {
+  if (viewing) return;                      // looking at a saved session: ignore the device
   $('sSats').textContent = rec.sats;
   const fixed = rec.fix > 0 && !rec.hold;
   $('sFix').textContent = fixed ? 'GNSS พร้อม' : (rec.hold ? 'สัญญาณหลุด' : 'รอสัญญาณ...');
@@ -627,6 +649,7 @@ let device = null, polling = false, demoTimer = null;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function connect() {
+  if (viewing) closeView();
   if (!navigator.bluetooth) { msg('เบราว์เซอร์นี้ใช้บลูทูธไม่ได้: เปิดลิงก์ https ใน Chrome บน Android'); return; }
   stopAll();
   try {
@@ -716,6 +739,7 @@ function ovalPoint(dm, c0) {
   return {lat: c0.lat + y/mLat, lon: c0.lng + x/mLon};
 }
 $('btnDemo').onclick = () => {
+  if (viewing) closeView();
   stopAll(); stopGps(); resetRun(); $('dot').classList.add('on');
   msg('โหมดทดลอง: ข้อมูลจำลองรูปแบบเดียวกับ GSM020 พร้อม GPS จำลอง');
   const c0 = map.getCenter();
@@ -1274,6 +1298,161 @@ $('lapTable').tBodies[0].onclick = e => {
   $('map').scrollIntoView({behavior:'smooth', block:'center'});
 };
 mapViewOptions();
+
+// ---------- saved sessions (IndexedDB in this browser) + files ----------
+const IDB = {
+  db: null,
+  open() {
+    if (this.db) return Promise.resolve(this.db);
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('gsm020', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('sessions', {keyPath: 'id'});
+      r.onsuccess = () => { this.db = r.result; res(this.db); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  async run(mode, fn) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const t = db.transaction('sessions', mode), rq = fn(t.objectStore('sessions'));
+      t.oncomplete = () => res(rq && rq.result); t.onerror = () => rej(t.error);
+    });
+  },
+  put(o) { return this.run('readwrite', st => st.put(o)); },
+  all() { return this.run('readonly', st => st.getAll()); },
+  get(id) { return this.run('readonly', st => st.get(id)); },
+  del(id) { return this.run('readwrite', st => st.delete(id)); },
+};
+let viewing = null, lastAuto = 0;
+const modeName = m => m === 'rally' ? 'แรลลี่' : m === 'circuit' ? 'เซอร์กิต+เซกเตอร์' : 'เซอร์กิต';
+const rr = (v, d) => Math.round(v * 10**d) / 10**d;
+function defaultName() {
+  const d = new Date(samples.length ? samples[0].t : Date.now());
+  return `${d.toLocaleDateString('th-TH', {day:'numeric', month:'short'})} ${d.toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'})} · ${modeName(tMode)}`;
+}
+function buildSession(name, id) {
+  const best = laps.length ? Math.min(...laps.map(l => l.ms)) : null;
+  return {
+    v: 1, id: id || 's' + Date.now(), name: name || defaultName(), saved: Date.now(),
+    start: samples.length ? samples[0].t : Date.now(), mode: tMode, pts: tPts.map(p => ({...p})),
+    s: samples.map(x => [x.t, rr(x.spd, 2), rr(x.acc, 3), rr(x.dist, 1), x.lat === undefined ? null : rr(x.lat, 7), x.lon === undefined ? null : rr(x.lon, 7)]),
+    laps: laps.map(l => ({n:l.n, ms:l.ms, secs:l.secs, max:l.max, avg:l.avg, maxPw:l.maxPw, t0:l.t0, t1:l.t1, dist:l.dist})),
+    acc: accRuns, accMode, accT: {...accT},
+    sum: {laps: laps.length, best, max: rr(maxSpd, 1), dist: Math.round(distM), dur: samples.length ? samples[samples.length-1].t - samples[0].t : 0, accN: accRuns.length},
+  };
+}
+function loadSession(o) {
+  if (!o || o.v !== 1 || !Array.isArray(o.s)) { sessMsg('ไฟล์นี้ไม่ใช่ข้อมูลของแอปนี้'); return; }
+  stopAll(); stopGps(); if (liveOn) stopLive();
+  if (editing) setEditing(false);
+  resetRun();
+  viewing = o;
+  samples = o.s.map(a => { const x = {t:a[0], spd:a[1], acc:a[2], dist:a[3]}; if (a[4] != null) { x.lat = a[4]; x.lon = a[5]; } x.pw = powerW(x.spd, x.acc); return x; });
+  maxSpd = Math.max(0, ...samples.map(x => x.spd));
+  maxAcc = Math.max(0, ...samples.map(x => Math.abs(x.acc) / G));
+  maxPw = Math.max(0, ...samples.map(x => x.pw));
+  distM = samples.length ? samples[samples.length-1].dist : 0;
+  t0 = samples.length ? samples[0].t : null;
+  // timing points of that session (shown only; your saved points are not changed)
+  tMode = ['simple', 'circuit', 'rally'].includes(o.mode) ? o.mode : 'simple';
+  tPts = (o.pts || []).map(p => ({...p}));
+  document.querySelectorAll('[data-tmode]').forEach(b => b.classList.toggle('sel', b.dataset.tmode === tMode));
+  resetRunState(); drawPts();
+  laps = (o.laps || []).map(l => {
+    const seg = samples.filter(x => x.t >= l.t0 && x.t <= l.t1), d0 = seg.length ? seg[0].dist : 0;
+    return {...l, prof: seg.map(x => [x.dist - d0, x.t - l.t0])};
+  });
+  accRuns = Array.isArray(o.acc) ? o.acc : [];
+  if (o.accMode) accMode = o.accMode;
+  if (o.accT) accT = {...accT, ...o.accT};
+  brkZones = []; brkCur = null; brkPre = null;
+  samples.forEach(x => { if (x.lat !== undefined) brkFeed(x); }); brkCur = null;
+  mapView = 'all';
+  renderTrack(true); drawChart(); updateStats(samples[samples.length-1] || null);
+  lapUi(); accFillTargets(); accUi();
+  $('viewBanner').hidden = false;
+  $('viewName').textContent = o.name;
+  $('viewWhen').textContent = new Date(o.start).toLocaleString('th-TH');
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+function closeView() {
+  if (!viewing) return;
+  viewing = null;
+  resetRun(); accRuns = []; accRun = null;
+  try { const m = localStorage.getItem('gsm020mode'); tMode = ['simple', 'circuit', 'rally'].includes(m) ? m : 'simple'; } catch (e) {}
+  try { const j = JSON.parse(localStorage.getItem('gsm020acc') || 'null'); if (j) { accMode = j.mode === 'spd' ? 'spd' : 'dist'; } } catch (e) {}
+  tPts = loadPts(tMode); resetRunState(); drawPts();
+  document.querySelectorAll('[data-tmode]').forEach(b => b.classList.toggle('sel', b.dataset.tmode === tMode));
+  lapUi(); accFillTargets(); accUi();
+  $('viewBanner').hidden = true;
+}
+function sessMsg(t) { $('sessInfo').textContent = t; }
+function downloadSession(o) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(o)], {type:'application/json'}));
+  a.download = `gsm020_${new Date(o.start).toISOString().slice(0,16).replace(/[:T]/g,'-')}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function listSessions() {
+  let all = [];
+  try { all = await IDB.all(); } catch (e) { sessMsg('เบราว์เซอร์นี้เก็บข้อมูลไม่ได้ ใช้ปุ่มดาวน์โหลดไฟล์แทน'); }
+  all.sort((a, b) => (b.id === 'autosave') - (a.id === 'autosave') || b.start - a.start);
+  $('sessList').innerHTML = all.length ? all.map(o => {
+    const m = o.sum || {}, dur = Math.round((m.dur || 0) / 1000);
+    const bits = [modeName(o.mode), `${Math.floor(dur/60)}:${String(dur%60).padStart(2,'0')} นาที`, `สูงสุด ${m.max ?? '-'} km/h`, `${m.dist ?? 0} m`];
+    if (m.laps) bits.push(`${m.laps} ${o.mode === 'rally' ? 'รัน' : 'รอบ'} ดีสุด ${fmtLap(m.best)}`);
+    if (m.accN) bits.push(`อัตราเร่ง ${m.accN} ครั้ง`);
+    return `<div class="sess ${viewing && viewing.id === o.id ? 'open' : ''}">
+      <div><b>${o.id === 'autosave' ? '⟲ บันทึกอัตโนมัติ (ล่าสุด) · ' : ''}${esc(o.name)}</b>
+      <div class="kv">${new Date(o.start).toLocaleString('th-TH')} · ${bits.join(' · ')}</div></div>
+      <div class="btns" style="margin-top:6px"><button data-open="${esc(o.id)}">เปิดดู</button><button data-dl="${esc(o.id)}">⬇ ไฟล์</button><button data-del="${esc(o.id)}">ลบ</button></div></div>`;
+  }).join('') : '<div class="kv">ยังไม่มีข้อมูลที่บันทึกไว้</div>';
+}
+$('sessList').onclick = async e => {
+  const b = e.target.closest && e.target.closest('button'); if (!b) return;
+  const id = b.dataset.open || b.dataset.dl || b.dataset.del;
+  const o = await IDB.get(id).catch(() => null);
+  if (!o) return;
+  if (b.dataset.open) { loadSession(o); listSessions(); }
+  else if (b.dataset.dl) downloadSession(o);
+  else if (b.dataset.del) {
+    if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'กดอีกครั้งเพื่อลบ'; setTimeout(() => { b.dataset.sure = ''; b.textContent = 'ลบ'; }, 3000); return; }
+    await IDB.del(id); if (viewing && viewing.id === id) closeView(); listSessions(); sessMsg('ลบแล้ว');
+  }
+};
+$('btnSave').onclick = async () => {
+  if (viewing) { sessMsg('ข้อมูลนี้บันทึกไว้แล้ว'); return; }
+  if (!samples.length) { sessMsg('ยังไม่มีข้อมูลให้บันทึก'); return; }
+  const o = buildSession($('sessName').value.trim());
+  try { await IDB.put(o); sessMsg(`บันทึกแล้ว: ${o.name}`); $('sessName').value = ''; } catch (e) { sessMsg('บันทึกในเครื่องไม่ได้ จึงดาวน์โหลดเป็นไฟล์แทน'); downloadSession(o); }
+  listSessions();
+};
+$('btnSaveFile').onclick = () => {
+  if (viewing) { downloadSession(viewing); return; }
+  if (!samples.length) { sessMsg('ยังไม่มีข้อมูลให้บันทึก'); return; }
+  downloadSession(buildSession($('sessName').value.trim()));
+};
+$('btnOpenFile').onclick = () => $('sessFile').click();
+$('sessFile').onchange = async () => {
+  const f = $('sessFile').files[0]; $('sessFile').value = '';
+  if (!f) return;
+  try {
+    const o = JSON.parse(await f.text());
+    if (!o || o.v !== 1 || !Array.isArray(o.s)) throw new Error('bad');
+    if (!o.id || o.id === 'autosave') o.id = 's' + Date.now();
+    try { await IDB.put(o); } catch (e) {}
+    loadSession(o); listSessions(); sessMsg(`เปิดไฟล์แล้ว: ${o.name}`);
+  } catch (e) { sessMsg('เปิดไฟล์นี้ไม่ได้ ต้องเป็นไฟล์ .json ที่ดาวน์โหลดจากแอปนี้'); }
+};
+$('btnCloseView').onclick = () => { closeView(); listSessions(); };
+// autosave the running session every 30 s, so a closed tab or dead battery loses little
+setInterval(async () => {
+  if (viewing || samples.length < 20 || Date.now() - lastAuto < 30000) return;
+  lastAuto = Date.now();
+  try { await IDB.put(buildSession('บันทึกอัตโนมัติ', 'autosave')); listSessions(); } catch (e) {}
+}, 5000);
+listSessions();
 
 // ---------- reference lap + deltas ----------
 let refMode = 'best';

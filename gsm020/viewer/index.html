@@ -37,6 +37,11 @@
   .lap.flash{animation:fl 1.2s ease-out}@keyframes fl{0%{background:#2ecc7155}}
   @media (prefers-reduced-motion:reduce){.lap.flash{animation:none}}
   .startlbl{transform:translate(-50%,-130%);font:700 12px system-ui;background:#fff;color:#111;border:1.5px solid #111;border-radius:7px;padding:1px 5px;white-space:nowrap}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .chip{background:#0f1216;border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:15px;font-variant-numeric:tabular-nums}
+  .chip em{font-style:normal;color:var(--mut);font-size:12px;margin-right:2px}
+  .chip.now{border-color:#3fa7ff}
+  td.purple{color:#b57cff;font-weight:700}
   #status{padding:0 14px;font-size:12px;color:#f1c40f;min-height:16px}
   .sec{margin:8px 14px 4px;font-size:13px;color:var(--mut)}
   .fig{position:relative;height:200px;margin:0 14px;background:var(--card);border:1px solid var(--line);border-radius:12px}
@@ -77,7 +82,8 @@
       <div class="kv">รอบล่าสุด<b id="lapLast">-</b><span id="lapLastD"></span></div>
       <div class="kv">ดีที่สุด<b id="lapBest" class="neg">-</b><span id="lapBestN"></span></div>
     </div>
-    <table class="laps" id="lapTable" hidden><thead><tr><th>รอบ</th><th>เวลา</th><th id="thD">ต่างจากดีสุด</th><th>สูงสุด</th><th>เฉลี่ย</th></tr></thead><tbody></tbody></table>
+    <div class="chips" id="secNow"></div>
+    <div style="overflow-x:auto"><table class="laps" id="lapTable" hidden><thead><tr><th id="thRun">รอบ</th><th>เวลา</th><th id="thD">ต่างจากดีสุด</th><th id="thSecs" style="display:contents"></th><th>สูงสุด</th><th>เฉลี่ย</th></tr></thead><tbody></tbody></table></div>
   </div>
   <div id="status"></div>
   <div class="sec">ความเร็วตามเวลา</div>
@@ -182,7 +188,7 @@ function start(room) {
 
 
   // ---- laps (sent by the tracker) ----
-  let lap = null, lapRecv = 0, lapRows = [], lastN = 0, startMk = null, startCirc = null;
+  let lap = null, lapRecv = 0, secRecv = 0, ptLayer = null, lapRows = [], lastN = 0, startMk = null, startCirc = null;
   const fmtLap = ms => { if (ms == null) return '-'; const t = ms/1000, m = Math.floor(t/60); return `${m}:${(t-m*60).toFixed(1).padStart(4,'0')}`; };
   const fmtD = ms => ms == null ? '-' : (ms < 0 ? '-' : '+') + (Math.abs(ms)/1000).toFixed(2) + ' s';
   const tone = (el, ms) => { el.classList.toggle('neg', ms != null && ms < 0); el.classList.toggle('pos', ms != null && ms > 0); };
@@ -193,7 +199,19 @@ function start(room) {
     const prevMode = l.ref === 'prev';
     $('dLbl').textContent = prevMode ? 'ต่างจากรอบที่แล้ว' : 'ต่างจากรอบดีที่สุด';
     $('thD').textContent = prevMode ? 'ต่างจากรอบก่อน' : 'ต่างจากดีสุด';
-    $('lapNo').textContent = l.el == null ? 'รอผ่านจุดสตาร์ท' : `รอบที่ ${l.n + 1}`;
+    const W = l.mode === 'rally' ? 'รัน' : 'รอบ';
+    $('lapNo').textContent = l.el == null ? (l.mode === 'rally' ? 'รอออกสตาร์ท' : 'รอผ่านจุดสตาร์ท') : `${W}ที่ ${l.n + 1}`;
+    $('thRun').textContent = W;
+    secRecv = Date.now();
+    const ns = l.nSec || 0, bs = l.bestSecs || [];
+    $('thSecs').innerHTML = Array.from({length:ns}, (_, k) => `<th>S${k+1}</th>`).join('');
+    $('secNow').innerHTML = !ns ? '' : Array.from({length:ns}, (_, k) => {
+      const v = (l.secs || [])[k];
+      if (v != null) { const d = bs[k] == null ? null : v - bs[k];
+        return `<span class="chip"><em>S${k+1}</em> ${fmtLap(v)}${d == null ? '' : ` <small class="${d < 0 ? 'neg' : 'pos'}">${fmtD(d)}</small>`}</span>`; }
+      if (l.el != null && k === (l.secs || []).length) return `<span class="chip now"><em>S${k+1}</em> <span data-live-sec>…</span></span>`;
+      return `<span class="chip"><em>S${k+1}</em> -</span>`;
+    }).join('');
     $('lapD').textContent = fmtD(l.d); tone($('lapD'), l.d);
     $('lapLast').textContent = fmtLap(l.last);
     const ld = l.last == null ? null : prevMode ? (l.prev == null ? null : l.last - l.prev) : (l.best === l.last ? null : l.last - l.best);
@@ -202,11 +220,12 @@ function start(room) {
     $('lapBestN').textContent = l.bestN ? `รอบที่ ${l.bestN}` : '';
     if (l.n > lastN && lastN) { $('lapBox').classList.remove('flash'); void $('lapBox').offsetWidth; $('lapBox').classList.add('flash'); }
     if (l.n > lapRows.length) {   // a lap finished since the last snapshot: add it from the live data
-      lapRows.push([l.n, l.last, null, null]);
+      lapRows.push([l.n, l.last, null, null, null]);
       drawLapTable();
     }
     lastN = l.n;
-    if (l.start) drawStart(l.start);
+    drawLapTable();
+    if (Array.isArray(l.pts) && l.pts.length) drawPts(l.pts); else if (l.start) drawStart(l.start);
   }
   function drawLapTable() {
     const tb = $('lapTable'); tb.hidden = !lapRows.length;
@@ -214,10 +233,26 @@ function start(room) {
     tb.tBodies[0].innerHTML = lapRows.slice().reverse().map(r => {
       const d = prevMode ? (r[0] > 1 ? r[1] - lapRows[r[0]-2][1] : null) : (r[1] === best ? null : r[1] - best);
       const cell = d == null ? (r[1] === best && !prevMode ? 'ดีที่สุด' : '-') : fmtD(d);
+      const ns = (lap && lap.nSec) || 0, bs = (lap && lap.bestSecs) || [];
+      const sc = Array.from({length:ns}, (_, k) => { const v = r[4] ? r[4][k] : null;
+        return `<td class="${v != null && v === bs[k] ? 'purple' : ''}">${v == null ? '–' : fmtLap(v)}</td>`; }).join('');
       return `<tr class="${r[1] === best ? 'best' : ''}"><td>${r[0]}</td><td>${fmtLap(r[1])}</td>` +
-             `<td class="${d == null ? '' : d < 0 ? 'neg' : 'pos'}">${cell}</td>` +
+             `<td class="${d == null ? '' : d < 0 ? 'neg' : 'pos'}">${cell}</td>${sc}` +
              `<td>${r[2] == null ? '' : r[2].toFixed(1)}</td><td>${r[3] == null ? '' : r[3].toFixed(1)}</td></tr>`;
     }).join('');
+  }
+  let ptsKey = '';
+  function drawPts(pts) {
+    const key = JSON.stringify(pts); if (key === ptsKey) return; ptsKey = key;
+    ensureMap();
+    if (ptLayer) ptLayer.remove();
+    if (startMk) { startMk.remove(); startCirc.remove(); startMk = startCirc = null; }
+    ptLayer = L.layerGroup().addTo(map);
+    pts.forEach(p => {
+      L.circle([p.lat, p.lon], {radius:p.r, color:'#fff', weight:2, dashArray:'6 5', fillOpacity:0.1, interactive:false}).addTo(ptLayer);
+      const lbl = String(p.label || '').replace(/[<>&"]/g, '');
+      L.marker([p.lat, p.lon], {interactive:false, icon:L.divIcon({className:'', iconSize:null, html:`<div class="startlbl">${lbl}</div>`})}).addTo(ptLayer);
+    });
   }
   function drawStart(st) {
     ensureMap();
@@ -229,6 +264,8 @@ function start(room) {
     if (!lap || lap.el == null) { $('lapCur').textContent = '--:--.-'; return; }
     const live = $('live').classList.contains('on');
     $('lapCur').textContent = fmtLap(lap.el + (live ? Date.now() - lapRecv : 0));
+    const ls = document.querySelector('[data-live-sec]');
+    if (ls && lap.secEl != null) ls.textContent = fmtLap(lap.secEl + (live ? Date.now() - secRecv : 0));
   }, 100);
 
   // ---- data ----
@@ -239,8 +276,8 @@ function start(room) {
     $('dist').textContent = (d.dist ?? 0).toLocaleString();
     $('lg').textContent = maxSpd.toFixed(0);
     redrawMap(); schedule();
-    if (Array.isArray(d.laps)) { lapRows = d.laps.slice(); drawLapTable(); }
     if (d.lap) setLap(d.lap);
+    if (Array.isArray(d.laps)) { lapRows = d.laps.slice(); drawLapTable(); }
   }
 
   function onLive(d) {

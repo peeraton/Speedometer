@@ -142,7 +142,7 @@
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-28</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-29</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -639,15 +639,34 @@ function assignSegment(k) {
 }
 
 // ---------- map (phone GPS) ----------
-const map = L.map('map', {preferCanvas:true}).setView([13.7563,100.5018], 15);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:20, attribution:'© OpenStreetMap'}).addTo(map);
+const map = L.map('map', {preferCanvas:true, maxZoom:22, renderer:L.canvas({tolerance:10})}).setView([13.7563,100.5018], 15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:22, maxNativeZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
 const trackLayer = L.layerGroup().addTo(map);
 const me = L.circleMarker([0,0], {radius:7, color:'#000', weight:2, fillColor:'#fff', fillOpacity:1});
 let drawn = [], lastLabelDist = -1e9, maxPlaced = null, maxMarker = null, nFix = 0;
 map.on('dragstart', () => follow = false);
+// a pinch/zoom by the user also stops following (only the ◎ button turns it back on)
+let progView = false;
+function setViewP(ll, z, o) { progView = true; try { map.setView(ll, z, o); } finally { progView = false; } }
+map.on('zoomstart', () => { if (!progView) { follow = false; if (typeof locUi === 'function') locUi(); } });
+// tap anywhere near the track: show the closest point (dots are small and hard to hit)
+const pickRing = L.circleMarker([0, 0], {radius: 9, color: '#fff', weight: 3, fill: false, interactive: false});
+function nearestDrawn(latlng, maxPx) {
+  const c = map.latLngToContainerPoint(latlng);
+  let best = null, bd = maxPx;
+  for (const d of drawn) {
+    const p = map.latLngToContainerPoint([d.s.lat, d.s.lon]), dd = Math.hypot(p.x - c.x, p.y - c.y);
+    if (dd < bd) { bd = dd; best = d.s; }
+  }
+  return best;
+}
 map.on('click', e => {
   if (editing) { addPoint(e.latlng.lat, e.latlng.lng, true); editHint(); return; }
-  follow = true;
+  const s = nearestDrawn(e.latlng, 36);
+  if (!s) { pickRing.remove(); return; }
+  follow = false; locUi();
+  pickRing.setLatLng([s.lat, s.lon]).addTo(map);
+  L.popup({autoPan: true}).setLatLng([s.lat, s.lon]).setContent(pointInfo(s)).openOn(map);
 });
 
 function color(v) {
@@ -707,9 +726,8 @@ let drawPrev = null;                        // previous point drawn in the same 
 function drawPoint(s, faint) {
   const prev = drawPrev;
   const c = segColor(s);
-  const seg = prev && s.t - prev.t < 3000 ? L.polyline([[prev.lat,prev.lon],[s.lat,s.lon]], {color:c, weight: faint ? 3 : 5, opacity: faint ? .4 : .9, dashArray: faint ? '6 6' : null}).addTo(trackLayer) : null;
-  const dot = L.circleMarker([s.lat,s.lon], {radius: faint ? 2 : 3, weight:0, fillColor:c, fillOpacity: faint ? .4 : 1}).addTo(trackLayer)
-    .bindPopup(() => pointInfo(s));
+  const seg = prev && s.t - prev.t < 3000 ? L.polyline([[prev.lat,prev.lon],[s.lat,s.lon]], {color:c, weight: faint ? 3 : 5, opacity: faint ? .4 : .9, dashArray: faint ? '6 6' : null, interactive:false}).addTo(trackLayer) : null;
+  const dot = L.circleMarker([s.lat,s.lon], {radius: faint ? 2 : 3, weight:0, fillColor:c, fillOpacity: faint ? .4 : 1, interactive:false}).addTo(trackLayer);
   drawn.push({s, seg, dot});
   drawPrev = s;
   if (faint) return;
@@ -790,8 +808,8 @@ function startGps() {
     me.setLatLng([gps.lat, gps.lon]).addTo(map);
     if (src === 'phone') phoneSample(p);
     else if (gps.acc <= GPS_MAX_ERR) { nFix++; onFix(gps); }
-    if (wantCenter) { wantCenter = false; map.setView([gps.lat, gps.lon], Math.max(map.getZoom(), 18)); }
-    else if (follow) map.setView([gps.lat, gps.lon], Math.max(map.getZoom(), 17), {animate:false});
+    if (wantCenter) { wantCenter = false; setViewP([gps.lat, gps.lon], Math.max(map.getZoom(), 18)); }
+    else if (follow) setViewP([gps.lat, gps.lon], Math.max(map.getZoom(), 17), {animate:false});
     mapInfo();
   }, e => {
     if (e.code === 1) {            // permission denied or prompt dismissed: stop and explain
@@ -881,7 +899,7 @@ function hudTick() {
 setInterval(hudTick, 100);
 function goToMe() {
   follow = !editing;                        // keep following the phone, except while placing points
-  if (gps) { map.setView([gps.lat, gps.lon], Math.max(map.getZoom(), 18)); locUi(); return; }
+  if (gps) { setViewP([gps.lat, gps.lon], Math.max(map.getZoom(), 18)); locUi(); return; }
   wantCenter = true;                        // no fix yet: centre as soon as one arrives
   if (gpsWatch === null) startGps();
   $('mapInfo').textContent = 'กำลังหาตำแหน่งของคุณ ...';

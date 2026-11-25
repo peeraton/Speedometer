@@ -300,22 +300,34 @@ function start(room) {
   new ResizeObserver(draw).observe(cv);
 
   // ---- map (only when the sender has phone GPS on) ----
+  let progView = false, pickRing = null;
+  function setViewP(ll, z, o) { progView = true; try { map.setView(ll, z, o); } finally { progView = false; } }
   let mapColor = 'spd', mapView = 'all', brkRows = [], drawn = [], drawPrev = null, lastLbl = -1e9, maxMk = null, maxPl = null, brkLayer = null, wantFit = true;
   function ensureMap() {
     if (map) return;
     $('mapWrap').style.display = 'block';
-    map = L.map('map', {preferCanvas:true}).setView([13.7563,100.5018], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:20, attribution:'© OpenStreetMap'}).addTo(map);
+    map = L.map('map', {preferCanvas:true, maxZoom:22, renderer:L.canvas({tolerance:10})}).setView([13.7563,100.5018], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:22, maxNativeZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
     trackLayer = L.layerGroup().addTo(map);
     brkLayer = L.layerGroup().addTo(map);
     car = L.circleMarker([0,0], {radius:8, color:'#000', weight:2, fillColor:'#fff', fillOpacity:1});
     map.on('dragstart', () => { follow = false; locUi(); });
-    map.on('click', () => { follow = true; locUi(); });
+    map.on('zoomstart', () => { if (!progView) { follow = false; locUi(); } });
+    pickRing = L.circleMarker([0, 0], {radius: 9, color: '#fff', weight: 3, fill: false, interactive: false});
+    map.on('click', e => {                     // tap near the track: details of the closest point
+      const c = map.latLngToContainerPoint(e.latlng);
+      let best = null, bd = 36;
+      drawn.forEach(d => { const q = map.latLngToContainerPoint([d.p.lat, d.p.lon]), dd = Math.hypot(q.x - c.x, q.y - c.y); if (dd < bd) { bd = dd; best = d.p; } });
+      if (!best) { pickRing.remove(); return; }
+      follow = false; locUi();
+      pickRing.setLatLng([best.lat, best.lon]).addTo(map);
+      L.popup({autoPan: true}).setLatLng([best.lat, best.lon]).setContent(pointTip(best).replace(/ · /g, '<br>')).openOn(map);
+    });
     const Ctl = L.Control.extend({ options:{position:'topleft'}, onAdd() {
       const b = L.DomUtil.create('button', 'locbtn on');
       b.id = 'btnLoc'; b.type = 'button'; b.title = 'ไปที่ตำแหน่งรถ'; b.setAttribute('aria-label', 'ไปที่ตำแหน่งรถ'); b.textContent = '◎';
       L.DomEvent.disableClickPropagation(b);
-      L.DomEvent.on(b, 'click', () => { follow = true; locUi(); if (car && map.hasLayer(car)) map.setView(car.getLatLng(), Math.max(map.getZoom(), 17)); });
+      L.DomEvent.on(b, 'click', () => { follow = true; locUi(); if (car && map.hasLayer(car)) setViewP(car.getLatLng(), Math.max(map.getZoom(), 17)); });
       return b; } });
     new Ctl().addTo(map);
     const FullCtl = L.Control.extend({ options:{position:'topleft'}, onAdd() {
@@ -381,8 +393,7 @@ function start(room) {
     if (p.ay != null && Math.abs(p.ay) > maxLatG) { maxLatG = Math.abs(p.ay); $('lgLatMax').textContent = maxLatG.toFixed(2); }
     const prev = drawPrev, c = segColor(p);
     const seg = prev && p.t - prev.t < 3000 ? L.polyline([[prev.lat, prev.lon], [p.lat, p.lon]], {color:c, weight: faint ? 3 : 5, opacity: faint ? .4 : .9, dashArray: faint ? '6 6' : null}).addTo(trackLayer) : null;
-    const dot = L.circleMarker([p.lat, p.lon], {radius: faint ? 2 : 3, weight:0, fillColor:c, fillOpacity: faint ? .4 : 1}).addTo(trackLayer)
-      .bindTooltip(() => pointTip(p), {sticky:true});
+    const dot = L.circleMarker([p.lat, p.lon], {radius: faint ? 2 : 3, weight:0, fillColor:c, fillOpacity: faint ? .4 : 1, interactive:false}).addTo(trackLayer);
     drawn.push({p, seg, dot}); drawPrev = p;
     if (faint) return;
     if (p.dist != null && p.dist - lastLbl >= 25) {
@@ -731,7 +742,7 @@ function start(room) {
     if (typeof d.lat === 'number') {                      // car marker = sender's latest GPS position
       ensureMap();
       car.setLatLng([d.lat, d.lon]).addTo(map);
-      if (follow) map.setView([d.lat, d.lon], Math.max(map.getZoom(), 17), {animate:false});
+      if (follow) setViewP([d.lat, d.lon], Math.max(map.getZoom(), 17), {animate:false});
     }
     wheelShow(d.sw ?? null, d.us ?? null);
     if (rescale && mapColor === 'spd') recolor();

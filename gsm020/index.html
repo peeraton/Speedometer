@@ -133,8 +133,9 @@
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-19</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-20</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
+  <div class="seg" role="group" aria-label="แหล่งข้อมูล" style="flex-basis:100%;width:max-content"><button data-src="gsm">GSM020</button><button data-src="phone">GPS มือถืออย่างเดียว</button></div>
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
   <button id="btnClear">เริ่มรอบใหม่</button>
@@ -386,22 +387,70 @@ function onLive(rec) {
   if (lastDistRaw !== null && rec.distRaw + 30000 < lastDistRaw) distBase += 65536;
   lastDistRaw = rec.distRaw;
   distM = (distBase + rec.distRaw) / 10;
+  ingest(t, rec.speed, distM, null, 0.35);
+}
+// one speed sample from either source; pos = {lat, lon} when the sample already has a position
+function ingest(t, spd, dist, pos, alpha) {
   const prev = samples[samples.length - 1];
   let acc = 0;
   if (prev) {
     const dt = (t - prev.t) / 1000;
-    if (dt > 0.02) { accF = 0.35 * ((rec.speed - prev.spd) / 3.6 / dt) + 0.65 * accF; acc = accF; }
+    if (dt > 0.02) { accF = alpha * ((spd - prev.spd) / 3.6 / dt) + (1 - alpha) * accF; acc = accF; }
   }
-  const s = {t, spd:rec.speed, acc, dist:distM};
+  const s = {t, spd, acc, dist};
   s.pw = powerW(s.spd, s.acc);
   if (s.pw > maxPw) maxPw = s.pw;
   samples.push(s);
   accFeed(s);
-  maxSpd = Math.max(maxSpd, rec.speed);
+  maxSpd = Math.max(maxSpd, spd);
   maxAcc = Math.max(maxAcc, Math.abs(acc) / G);
+  if (pos) { s.lat = pos.lat; s.lon = pos.lon; assignIdx = samples.length; addMapPoint(s); }
   updateStats(s);
   scheduleChart();
 }
+
+// ---------- phone-GPS-only source ----------
+let src = 'gsm', phoneRec = false, phonePrev = null;
+try { if (localStorage.getItem('gsm020src') === 'phone') src = 'phone'; } catch (e) {}
+function phoneSample(p) {
+  if (!phoneRec || viewing) return;
+  const c = p.coords, t = Date.now(), acc = c.accuracy;
+  $('sSats').textContent = '-';
+  $('sFix').textContent = `GPS มือถือ ±${Math.round(acc)} m`;
+  $('sFix').style.color = acc <= 15 ? 'var(--ok)' : 'var(--warn)';
+  if (acc > GPS_MAX_ERR) return;
+  const pos = {lat: c.latitude, lon: c.longitude};
+  let spd;
+  if (c.speed != null && c.speed >= 0) spd = c.speed * 3.6;            // the phone's own Doppler speed
+  else if (phonePrev) spd = distM2(phonePrev, pos) / Math.max(0.2, (t - phonePrev.t) / 1000) * 3.6;
+  else spd = 0;
+  if (phonePrev) {                                                       // ignore jitter while standing still
+    const seg = distM2(phonePrev, pos);
+    if (spd > 1.5 || seg > Math.max(acc, 5)) distM += seg;
+  }
+  phonePrev = {...pos, t};
+  if (t0 === null) t0 = t;
+  ingest(t, spd, distM, pos, 0.7);
+}
+function startPhone() {
+  if (viewing) closeView();
+  stopAll();
+  phoneRec = true; phonePrev = null;
+  if (gpsWatch === null) startGps();
+  $('dot').classList.add('on');
+  msg('กำลังบันทึกด้วย GPS มือถือ (อัปเดตประมาณวินาทีละครั้ง)');
+}
+function srcUi() {
+  document.querySelectorAll('[data-src]').forEach(b => b.classList.toggle('sel', b.dataset.src === src));
+  $('btnConnect').textContent = src === 'phone' ? '▶ เริ่มบันทึก (GPS มือถือ)' : 'เชื่อมต่อ GSM020';
+}
+document.querySelectorAll('[data-src]').forEach(b => b.onclick = () => {
+  if (b.dataset.src === src) return;
+  stopAll(); src = b.dataset.src;
+  try { localStorage.setItem('gsm020src', src); } catch (e) {}
+  srcUi();
+  msg(src === 'phone' ? 'ใช้ GPS มือถืออย่างเดียว: กด "เริ่มบันทึก" แล้วเก็บมือถือไว้บนรถ' : 'ใช้ GSM020: กด "เชื่อมต่อ GSM020"');
+});
 
 // ---------- virtual power ----------
 // P = v * (m*a + Crr*m*g + 0.5*rho*CdA*v^2), negative (braking) shown as 0
@@ -611,7 +660,7 @@ function mapInfo() {
   else if (gpsWatch === null) t = 'GPS มือถือปิดอยู่ กดปุ่มด้านบนเพื่อเปิด (ต้องเปิดจึงจะมีเส้นทาง)';
   else if (!gps) t = 'กำลังหาตำแหน่งมือถือ ...';
   else if (gps.acc > GPS_MAX_ERR) t = `GPS มือถือคลาดเคลื่อน ±${Math.round(gps.acc)} m (ต้องไม่เกิน ${GPS_MAX_ERR} m) ออกไปที่โล่ง`;
-  else if (!samples.length) t = `GPS มือถือ ±${Math.round(gps.acc)} m พร้อมแล้ว รอ GSM020 จับสัญญาณ (ไฟเขียว)`;
+  else if (!samples.length) t = src === 'phone' ? (phoneRec ? `GPS มือถือ ±${Math.round(gps.acc)} m พร้อม เริ่มเคลื่อนที่ได้เลย` : 'กด "เริ่มบันทึก (GPS มือถือ)" ด้านบน') : `GPS มือถือ ±${Math.round(gps.acc)} m พร้อมแล้ว รอ GSM020 จับสัญญาณ (ไฟเขียว)`;
   else if (!drawn.length) t = `GPS มือถือ ±${Math.round(gps.acc)} m กำลังเริ่มวาดเส้นทาง ...`;
   else t = '';
   $('mapInfo').textContent = t;
@@ -624,7 +673,8 @@ function startGps() {
     gpsErr = null;
     gps = {lat:p.coords.latitude, lon:p.coords.longitude, t:Date.now(), acc:p.coords.accuracy};
     me.setLatLng([gps.lat, gps.lon]).addTo(map);
-    if (gps.acc <= GPS_MAX_ERR) { nFix++; onFix(gps); }
+    if (src === 'phone') phoneSample(p);
+    else if (gps.acc <= GPS_MAX_ERR) { nFix++; onFix(gps); }
     if (wantCenter) { wantCenter = false; map.setView([gps.lat, gps.lon], Math.max(map.getZoom(), 18)); }
     else if (follow) map.setView([gps.lat, gps.lon], Math.max(map.getZoom(), 17), {animate:false});
     mapInfo();
@@ -808,14 +858,15 @@ async function connect() {
 }
 
 function stopAll() {
-  polling = false;
+  polling = false; phoneRec = false;
   if (demoTimer) { clearInterval(demoTimer); demoTimer = null; me.remove(); tPts = loadPts(tMode); laps = []; resetRunState(); drawPts(); lapUi(); }
   const d = device; device = null;
   if (d && d.gatt.connected) d.gatt.disconnect();
   $('dot').classList.remove('on');
 }
 
-$('btnConnect').onclick = connect;
+$('btnConnect').onclick = () => src === 'phone' ? startPhone() : connect();
+srcUi();
 $('btnStop').onclick = () => { stopAll(); msg('หยุดแล้ว'); };
 $('btnClear').onclick = () => { resetRun(); msg('เริ่มรอบใหม่'); };
 // demo: car laps an oval (2 x 60 m straights, 20 m radius bends) around the map centre
@@ -1443,7 +1494,7 @@ function defaultName() {
 function buildSession(name, id) {
   const best = laps.length ? Math.min(...laps.map(l => l.ms)) : null;
   return {
-    v: 1, id: id || 's' + Date.now(), name: name || defaultName(), saved: Date.now(),
+    v: 1, id: id || 's' + Date.now(), name: name || defaultName(), saved: Date.now(), src,
     start: samples.length ? samples[0].t : Date.now(), mode: tMode, pts: tPts.map(p => ({...p})),
     s: samples.map(x => [x.t, rr(x.spd, 2), rr(x.acc, 3), rr(x.dist, 1), x.lat === undefined ? null : rr(x.lat, 7), x.lon === undefined ? null : rr(x.lon, 7)]),
     laps: laps.map(l => ({n:l.n, ms:l.ms, secs:l.secs, max:l.max, avg:l.avg, maxPw:l.maxPw, t0:l.t0, t1:l.t1, dist:l.dist})),

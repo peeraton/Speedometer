@@ -67,7 +67,7 @@
   #tv .cur{font-size:clamp(64px,22vw,200px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
   #tv .live{font-size:clamp(40px,13vw,120px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1.05}
   #tv .lbl{font-size:14px;color:var(--mut)}
-  #tv .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  #tv .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
   #tv .box{background:#11161d;border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
   #tv .box b{display:block;font-size:clamp(22px,7vw,44px);font-variant-numeric:tabular-nums}
   #tv.flash .cur{color:var(--ok)}
@@ -89,12 +89,13 @@
   .leaflet-popup-content button{min-height:36px;padding:6px 10px;margin-top:6px;background:#e74c3c;border-color:#e74c3c;color:#fff}
   .locbtn{width:44px;height:44px;font-size:22px;line-height:40px;text-align:center;background:#fff;color:#111;border:2px solid rgba(0,0,0,.25);border-radius:8px;cursor:pointer;padding:0;min-height:0}
   .locbtn.on{background:#3fa7ff;color:#fff}
+  #pwBox{margin:0 12px 6px}
   #mapInfo{padding:4px 12px 0;font-size:12px;color:var(--warn)}
   .note{font-size:12px;color:var(--mut);line-height:1.5;padding:0 12px}
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-8</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-9</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -115,7 +116,20 @@
   <div class="st"><b id="sDist">0</b><span>ระยะทาง m</span></div>
   <div class="st"><b id="sTime">0:00</b><span>เวลา</span></div>
   <div class="st"><b id="sMaxAcc">0.00</b><span>ความเร่งสูงสุด g</span></div>
+  <div class="st"><b id="sPw">0</b><span>กำลัง W <span id="sPwHp"></span></span></div>
+  <div class="st"><b id="sMaxPw">0</b><span>กำลังสูงสุด W <span id="sMaxPwHp"></span></span></div>
+  <div class="st" style="display:flex;align-items:center;justify-content:center"><button id="btnPwSet" style="min-height:40px;padding:6px 10px;font-size:13px">ตั้งค่ากำลัง</button></div>
 </div>
+<details id="pwBox" style="margin-top:0">
+  <summary>ตั้งค่าการคำนวณกำลัง (Virtual Power)</summary>
+  <div class="note" style="padding:6px 0 0">กำลังคำนวณจากความเร็วและความเร่งของ GSM020: กำลัง = ความเร็ว × (น้ำหนัก × ความเร่ง + แรงต้านล้อ + แรงต้านอากาศ) เป็นกำลังที่ส่งถึงพื้นถนนโดยประมาณ ไม่ใช่ค่าที่วัดจากมอเตอร์ ใส่น้ำหนักรถให้ตรงที่สุดเพราะมีผลมากที่สุด</div>
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px">
+    <label class="kv">น้ำหนักรถ (kg)<input id="pwMass" type="number" step="0.1" min="0.1" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
+    <label class="kv">CdA (m²)<input id="pwCdA" type="number" step="0.001" min="0" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
+    <label class="kv">Crr<input id="pwCrr" type="number" step="0.005" min="0" inputmode="decimal" style="width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)"></label>
+  </div>
+  <div class="note" style="padding:6px 0 0">ค่าเริ่มต้นเหมาะกับรถ RC 1/10 (2.0 kg, CdA 0.016, Crr 0.02) รถ 1/8 ลองน้ำหนัก 3.5–4.5 kg, CdA 0.03 · แก้แล้วคำนวณใหม่ทั้งรอบทันที</div>
+</details>
 
 <div class="lap" id="lapBox">
   <div class="btns" style="margin-top:0;align-items:center"><span class="kv">โหมด</span>
@@ -163,7 +177,7 @@
   <div class="kv" style="margin-top:6px">คนที่มีลิงก์จะเห็นความเร็ว เส้นทาง ตำแหน่ง และเวลาต่อรอบแบบสด เปลี่ยนรหัสห้องเมื่อไม่อยากให้ลิงก์เดิมใช้ได้</div>
 </div>
 
-<div class="sec"><span>ความเร็วตามเวลา</span><span id="chartInfo"></span></div>
+<div class="sec"><div class="seg" role="group" aria-label="กราฟ"><button data-chart="spd" class="sel">ความเร็ว</button><button data-chart="pw">กำลัง</button></div><span id="chartInfo"></span></div>
 <div class="fig"><canvas id="chart"></canvas></div>
 
 <div class="sec"><span>แผนที่ (ตำแหน่งจาก GPS มือถือ)</span><button id="btnGps" style="padding:6px 10px;min-height:36px">ใช้ GPS มือถือ: ปิด</button></div>
@@ -187,6 +201,7 @@
     <div class="box"><span class="lbl">รอบล่าสุด</span><b id="tvLast">-</b><span id="tvLastD" class="lbl"></span></div>
     <div class="box"><span class="lbl">ดีที่สุด</span><b id="tvBest" class="neg">-</b><span id="tvBestN" class="lbl"></span></div>
     <div class="box"><span class="lbl">ความเร็ว</span><b id="tvSpd">0</b><span class="lbl">km/h</span></div>
+    <div class="box"><span class="lbl">กำลัง</span><b id="tvPw" style="color:#b57cff">0</b><span class="lbl">W</span></div>
   </div>
 </div>
 
@@ -228,7 +243,7 @@ let gps = null, gpsWatch = null, follow = true;
 let fixes = [], assignIdx = 0;
 
 function resetRun() {
-  samples = []; maxSpd = 0; maxAcc = 0; accF = 0; distBase = 0; lastDistRaw = null; distM = 0; t0 = null;
+  samples = []; maxSpd = 0; maxAcc = 0; maxPw = 0; accF = 0; distBase = 0; lastDistRaw = null; distM = 0; t0 = null;
   fixes = []; assignIdx = 0; lastLabelDist = -1e9; maxPlaced = null; nFix = 0;
   if (maxMarker) { maxMarker.remove(); maxMarker = null; }
   trackLayer.clearLayers(); drawn = []; drawChart(); updateStats(null);
@@ -254,11 +269,29 @@ function onLive(rec) {
     if (dt > 0.02) { accF = 0.35 * ((rec.speed - prev.spd) / 3.6 / dt) + 0.65 * accF; acc = accF; }
   }
   const s = {t, spd:rec.speed, acc, dist:distM};
+  s.pw = powerW(s.spd, s.acc);
+  if (s.pw > maxPw) maxPw = s.pw;
   samples.push(s);
   maxSpd = Math.max(maxSpd, rec.speed);
   maxAcc = Math.max(maxAcc, Math.abs(acc) / G);
   updateStats(s);
   scheduleChart();
+}
+
+// ---------- virtual power ----------
+// P = v * (m*a + Crr*m*g + 0.5*rho*CdA*v^2), negative (braking) shown as 0
+let pwCfg = {m:2.0, cda:0.016, crr:0.02}, maxPw = 0, chartMode = 'spd';
+try { const j = JSON.parse(localStorage.getItem('gsm020pw') || 'null'); if (j && j.m > 0) pwCfg = {...pwCfg, ...j}; } catch (e) {}
+function powerW(spdKmh, acc) {
+  const v = spdKmh / 3.6;
+  return Math.max(0, v * (pwCfg.m * acc + pwCfg.crr * pwCfg.m * G + 0.5 * 1.2 * pwCfg.cda * v * v));
+}
+const hp = w => `(${(w / 745.7).toFixed(2)} hp)`;
+function recalcPower() {
+  maxPw = 0;
+  samples.forEach(x => { x.pw = powerW(x.spd, x.acc); if (x.pw > maxPw) maxPw = x.pw; });
+  laps.forEach(l => { const seg = samples.filter(x => x.t >= l.t0 && x.t <= l.t1); l.maxPw = seg.length ? Math.max(...seg.map(x => x.pw)) : 0; });
+  updateStats(samples[samples.length - 1] || null); drawChart(); lapUi();
 }
 
 function updateStats(s) {
@@ -271,6 +304,9 @@ function updateStats(s) {
   const sec = s && t0 ? Math.round((s.t - t0) / 1000) : 0;
   $('sTime').textContent = `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
   $('lgMax').textContent = maxSpd.toFixed(0);
+  const pw = s && s.pw != null ? s.pw : 0;
+  $('sPw').textContent = Math.round(pw); $('sPwHp').textContent = hp(pw);
+  $('sMaxPw').textContent = Math.round(maxPw); $('sMaxPwHp').textContent = hp(maxPw);
 }
 
 // ---------- chart ----------
@@ -283,7 +319,9 @@ function drawChart() {
   const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0,0,W,H);
   const pad = {l:34, r:8, t:10, b:20};
   const pts = samples.length > 1200 ? samples.slice(-1200) : samples;
-  const top = Math.max(10, Math.ceil(maxSpd / 10) * 10);
+  const isPw = chartMode === 'pw', val = x => isPw ? (x.pw || 0) : x.spd;
+  const vmax = isPw ? maxPw : maxSpd, stepN = isPw ? (vmax > 2000 ? 500 : vmax > 400 ? 100 : 50) : 10;
+  const top = Math.max(stepN, Math.ceil(vmax / stepN) * stepN);
   g.font = '11px system-ui'; g.fillStyle = '#8a96a3'; g.strokeStyle = '#2a313b'; g.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
     const y = pad.t + (H - pad.t - pad.b) * i / 4;
@@ -296,12 +334,12 @@ function drawChart() {
   const Y = v => pad.t + (H - pad.t - pad.b) * (1 - v / top);
   g.lineWidth = 2.5; g.lineJoin = 'round';
   for (let i = 1; i < pts.length; i++) {
-    g.strokeStyle = color(pts[i].spd);
-    g.beginPath(); g.moveTo(X(pts[i-1].t), Y(pts[i-1].spd)); g.lineTo(X(pts[i].t), Y(pts[i].spd)); g.stroke();
+    g.strokeStyle = isPw ? '#b57cff' : color(pts[i].spd);
+    g.beginPath(); g.moveTo(X(pts[i-1].t), Y(val(pts[i-1]))); g.lineTo(X(pts[i].t), Y(val(pts[i]))); g.stroke();
   }
   g.fillStyle = '#8a96a3';
   g.fillText(`${Math.round(span/1000)} วินาทีล่าสุด`, W - pad.r - 90, H - 5);
-  $('chartInfo').textContent = `สูงสุด ${maxSpd.toFixed(1)} km/h`;
+  $('chartInfo').textContent = isPw ? `สูงสุด ${Math.round(maxPw)} W ${hp(maxPw)}` : `สูงสุด ${maxSpd.toFixed(1)} km/h`;
 }
 new ResizeObserver(drawChart).observe(cv);
 
@@ -568,13 +606,16 @@ $('btnDemo').onclick = () => {
   const at = m => { const q = ovalPoint(m, c0); return {lat:q.lat, lon:q.lon, r:Number($('lapR').value)}; };
   tPts = tMode === 'rally' ? [at(10), at(120), at(230)] : tMode === 'simple' ? [at(30)] : [at(30), at(110), at(190)];
   laps = []; resetRunState(); drawPts(); lapUi();
-  let k = 0, dist = 0;
+  let k = 0, dist = 0, demoSpd = 28;
   demoTimer = setInterval(() => {
     k++;
     // slower in the bends, faster on the straights
     const per = 120 + 2*Math.PI*20, d = (dist/10) % per;
     const bend = (d > 60 && d < 60 + Math.PI*20) || d > 120 + Math.PI*20;
-    const spd = Math.max(0, (bend ? 28 : 55) + Math.random() * 4);
+    // realistic car: accelerate ~2 m/s^2, brake ~4 m/s^2 towards the target speed
+    const target = (bend ? 28 : 57) + Math.random() * 2;
+    demoSpd += Math.max(-3.6, Math.min(1.8, target - demoSpd));
+    const spd = Math.max(0, demoSpd);
     dist += spd / 3.6 * 0.25 * 10;
     const sp = Math.round(spd * 100), ds = Math.round(dist) & 0xffff;
     onLive(decodeLive([6,1,12,0,0,0,0, sp>>8, sp&0xff, ds>>8, ds&0xff, 0x4d,0xf0,0,0,0]));
@@ -589,8 +630,8 @@ $('btnDemo').onclick = () => {
 };
 $('btnCsv').onclick = () => {
   if (!samples.length) { msg('ยังไม่มีข้อมูล'); return; }
-  const csv = 'time,speed_kmh,accel_ms2,accel_g,distance_m,lat,lon\n' + samples.map(s =>
-    `${new Date(s.t).toISOString()},${s.spd.toFixed(2)},${s.acc.toFixed(3)},${(s.acc/G).toFixed(3)},${s.dist.toFixed(1)},${s.lat ?? ''},${s.lon ?? ''}`).join('\n');
+  const csv = 'time,speed_kmh,accel_ms2,accel_g,distance_m,power_w,lat,lon\n' + samples.map(s =>
+    `${new Date(s.t).toISOString()},${s.spd.toFixed(2)},${s.acc.toFixed(3)},${(s.acc/G).toFixed(3)},${s.dist.toFixed(1)},${Math.round(s.pw || 0)},${s.lat ?? ''},${s.lon ?? ''}`).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
   a.download = `gsm020_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
@@ -724,6 +765,7 @@ function finishRun(c) {
   laps.push({n: laps.length + 1, ms: c.t - lastCross.t, prof: seg.map(x => [x.dist - lastCross.dist, x.t - lastCross.t]),
              secs: n ? (secs.length === n ? secs : null) : null,      // null = a split was missed
              max: Math.max(...seg.map(x => x.spd)), avg: seg.reduce((a, x) => a + x.spd, 0) / Math.max(1, seg.length),
+             maxPw: Math.max(0, ...seg.map(x => x.pw || 0)), t0: lastCross.t, t1: c.t,
              dist: c.dist - lastCross.dist});
   try { navigator.vibrate && navigator.vibrate(tMode === 'rally' ? [150, 80, 150] : 150); } catch (e) {}
   $('lapBox').classList.remove('flash'); void $('lapBox').offsetWidth; $('lapBox').classList.add('flash');
@@ -792,7 +834,7 @@ function lapUi(note) {
   const tb = $('lapTable');
   tb.hidden = !laps.length;
   $('lapHead').innerHTML = `<th>${W}</th><th>เวลา</th><th>${refMode === 'best' ? 'ต่างจากดีสุด' : `ต่างจาก${W}ก่อน`}</th>` +
-    Array.from({length:n}, (_, k) => `<th>S${k+1}</th>`).join('') + '<th>สูงสุด</th><th>เฉลี่ย</th>';
+    Array.from({length:n}, (_, k) => `<th>S${k+1}</th>`).join('') + '<th>สูงสุด</th><th>เฉลี่ย</th><th>W สูงสุด</th>';
   tb.tBodies[0].innerHTML = laps.slice().reverse().map(l => {
     let cell;
     if (refMode === 'best') cell = l.ms === best ? 'ดีที่สุด' : fmtDelta(l.ms - best);
@@ -803,7 +845,7 @@ function lapUi(note) {
       return `<td class="${v != null && v === bs[k] ? 'purple' : ''}">${v == null ? '–' : fmtLap(v)}</td>`;
     }).join('');
     return `<tr class="${l.ms === best ? 'best' : ''}"><td>${l.n}</td><td>${fmtLap(l.ms)}</td>` +
-           `<td class="${cls}">${cell}</td>${sc}<td>${l.max.toFixed(1)}</td><td>${l.avg.toFixed(1)}</td></tr>`;
+           `<td class="${cls}">${cell}</td>${sc}<td>${l.max.toFixed(1)}</td><td>${l.avg.toFixed(1)}</td><td>${Math.round(l.maxPw || 0)}</td></tr>`;
   }).join('');
   // points summary + guidance
   $('ptList').textContent = tPts.length ? 'จุดจับเวลา: ' + tPts.map((_, i) => ptLabel(i).replace('|', '→')).join(' · ') : '';
@@ -850,6 +892,21 @@ setInterval(() => {
   $('lapCur').textContent = lastCross ? fmtLap(Date.now() - lastCross.t) : '--:--.-';
   if (secStart) document.querySelectorAll('[data-live-sec]').forEach(el => el.textContent = fmtLap(Date.now() - secStart.t));
 }, 100);
+
+// ---------- power settings + chart switch ----------
+$('pwMass').value = pwCfg.m; $('pwCdA').value = pwCfg.cda; $('pwCrr').value = pwCfg.crr;
+['pwMass', 'pwCdA', 'pwCrr'].forEach(id => $(id).onchange = () => {
+  const m = parseFloat($('pwMass').value), c = parseFloat($('pwCdA').value), r = parseFloat($('pwCrr').value);
+  if (m > 0) pwCfg.m = m; if (c >= 0) pwCfg.cda = c; if (r >= 0) pwCfg.crr = r;
+  try { localStorage.setItem('gsm020pw', JSON.stringify(pwCfg)); } catch (e) {}
+  recalcPower();
+});
+$('btnPwSet').onclick = () => { $('pwBox').open = true; $('pwBox').scrollIntoView({behavior:'smooth', block:'center'}); };
+document.querySelectorAll('[data-chart]').forEach(b => b.onclick = () => {
+  chartMode = b.dataset.chart;
+  document.querySelectorAll('[data-chart]').forEach(x => x.classList.toggle('sel', x === b));
+  drawChart();
+});
 
 // ---------- reference lap + deltas ----------
 let refMode = 'best';
@@ -924,6 +981,7 @@ function tvTick() {
   $('tvBestN').textContent = best ? `รอบที่ ${best.n}` : '';
   const s = samples[samples.length - 1];
   $('tvSpd').textContent = s ? s.spd.toFixed(0) : '0';
+  $('tvPw').textContent = s && s.pw != null ? Math.round(s.pw) : '0';
 }
 setInterval(tvTick, 100);
 setRef(refMode);
@@ -962,7 +1020,7 @@ function publishTrack() {
     rows.push(x.lat !== undefined ? [x.t, r1(x.spd,1), r1(x.lat,6), r1(x.lon,6)] : [x.t, r1(x.spd,1)]);
   }
   pub('track', {max:r1(maxSpd,1), dist:Math.round(distM), pts:rows,
-                laps: laps.map(l => [l.n, l.ms, r1(l.max,1), r1(l.avg,1), l.secs]), lap: lapState()}, true);
+                laps: laps.map(l => [l.n, l.ms, r1(l.max,1), r1(l.avg,1), l.secs, Math.round(l.maxPw || 0)]), lap: lapState()}, true);
 }
 function liveTick() {
   if (!liveOn || !mq || !mq.connected) return;
@@ -973,6 +1031,7 @@ function liveTick() {
     pub('live', { t: now, spd: s ? r1(s.spd,1) : 0, acc: s ? r1(s.acc / G, 2) : 0, max: r1(maxSpd,1),
                   avg: samples.length ? r1(samples.reduce((a,x)=>a+x.spd,0)/samples.length,1) : 0,
                   dist: Math.round(distM), sats: Number($('sSats').textContent) || 0,
+                  pw: s ? Math.round(s.pw || 0) : 0, pmax: Math.round(maxPw),
                   ...(g ? {lat: r1(g.lat,7), lon: r1(g.lon,7)} : {}), lap: lapState() });
   }
   if (now - lastPubTrack >= 5000) publishTrack();

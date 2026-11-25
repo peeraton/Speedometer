@@ -75,6 +75,8 @@
       <div class="st"><b id="avg">0.0</b><span>เฉลี่ย km/h</span></div>
       <div class="st"><b id="acc">0.00</b><span>ความเร่ง g</span></div>
       <div class="st"><b id="dist">0</b><span>ระยะทาง m</span></div>
+      <div class="st"><b id="pw" style="color:#b57cff">0</b><span>กำลัง W</span></div>
+      <div class="st"><b id="pmax">0</b><span>กำลังสูงสุด W</span></div>
     </div>
   </div>
   <div class="lap" id="lapBox" hidden>
@@ -215,7 +217,7 @@ function start(room) {
     secRecv = Date.now();
     const ns = l.nSec || 0, bs = l.bestSecs || [];
     $('lapHead').innerHTML = `<th>${W}</th><th>เวลา</th><th>${prevMode ? `ต่างจาก${W}ก่อน` : 'ต่างจากดีสุด'}</th>` +
-      Array.from({length:ns}, (_, k) => `<th>S${k+1}</th>`).join('') + '<th>สูงสุด</th><th>เฉลี่ย</th>';
+      Array.from({length:ns}, (_, k) => `<th>S${k+1}</th>`).join('') + '<th>สูงสุด</th><th>เฉลี่ย</th><th>W สูงสุด</th>';
     $('secNow').innerHTML = !ns ? '' : Array.from({length:ns}, (_, k) => {
       const v = (l.secs || [])[k];
       if (v != null) { const d = bs[k] == null ? null : v - bs[k];
@@ -249,7 +251,7 @@ function start(room) {
         return `<td class="${v != null && v === bs[k] ? 'purple' : ''}">${v == null ? '–' : fmtLap(v)}</td>`; }).join('');
       return `<tr class="${r[1] === best ? 'best' : ''}"><td>${r[0]}</td><td>${fmtLap(r[1])}</td>` +
              `<td class="${d == null ? '' : d < 0 ? 'neg' : 'pos'}">${cell}</td>${sc}` +
-             `<td>${r[2] == null ? '' : r[2].toFixed(1)}</td><td>${r[3] == null ? '' : r[3].toFixed(1)}</td></tr>`;
+             `<td>${r[2] == null ? '' : r[2].toFixed(1)}</td><td>${r[3] == null ? '' : r[3].toFixed(1)}</td><td>${r[5] == null ? '' : r[5]}</td></tr>`;
     }).join('');
   }
   let ptsKey = '';
@@ -312,6 +314,7 @@ function start(room) {
     $('avg').textContent = (d.avg ?? 0).toFixed(1);
     $('acc').textContent = (d.acc ?? 0).toFixed(2);
     $('dist').textContent = (d.dist ?? 0).toLocaleString();
+    if (d.pw != null) { $('pw').textContent = d.pw; $('pmax').textContent = d.pmax ?? 0; }
     $('lg').textContent = maxSpd.toFixed(0);
     if (d.lap) setLap(d.lap);
     schedule();

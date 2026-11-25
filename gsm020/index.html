@@ -113,7 +113,7 @@
 
 <div class="lap" id="lapBox">
   <div class="btns" style="margin-top:0;align-items:center"><span class="kv">โหมด</span>
-    <div class="seg" role="group" aria-label="โหมดจับเวลา"><button data-tmode="circuit">เซอร์กิต</button><button data-tmode="rally">แรลลี่</button></div>
+    <div class="seg" role="group" aria-label="โหมดจับเวลา" style="flex-wrap:wrap"><button data-tmode="simple">เซอร์กิต</button><button data-tmode="circuit">เซอร์กิต+เซกเตอร์</button><button data-tmode="rally">แรลลี่</button></div>
   </div>
   <div class="row" style="margin-top:8px">
     <div><div class="kv" id="lapCurLbl">รอบปัจจุบัน</div><div class="cur" id="lapCur">--:--.-</div></div>
@@ -528,7 +528,7 @@ $('btnDemo').onclick = () => {
   map.setView(c0, 18, {animate:false}); follow = false;
   // demo timing points for the current mode (not saved; your own points come back when you stop)
   const at = m => { const q = ovalPoint(m, c0); return {lat:q.lat, lon:q.lon, r:Number($('lapR').value)}; };
-  tPts = tMode === 'rally' ? [at(10), at(120), at(230)] : [at(30), at(110), at(190)];
+  tPts = tMode === 'rally' ? [at(10), at(120), at(230)] : tMode === 'simple' ? [at(30)] : [at(30), at(110), at(190)];
   laps = []; resetRunState(); drawPts(); lapUi();
   let k = 0, dist = 0;
   demoTimer = setInterval(() => {
@@ -570,11 +570,12 @@ let lastCross = null, secStart = null, curSecs = [], nextIdx = 0, laps = [];
 let ptState = [];   // per point: {in, minD, minS, stopS}
 const loadPts = m => { try { const a = JSON.parse(localStorage.getItem('gsm020pts_' + m) || '[]'); return Array.isArray(a) ? a.filter(p => isFinite(p.lat)) : []; } catch (e) { return []; } };
 const savePts = () => { try { localStorage.setItem('gsm020pts_' + tMode, JSON.stringify(tPts)); localStorage.setItem('gsm020mode', tMode); } catch (e) {} };
-try { tMode = localStorage.getItem('gsm020mode') === 'rally' ? 'rally' : 'circuit'; } catch (e) {}
+try { const m = localStorage.getItem('gsm020mode'); tMode = ['simple', 'circuit', 'rally'].includes(m) ? m : 'simple'; } catch (e) {}
+const isCircuit = () => tMode !== 'rally';
 tPts = loadPts(tMode);
 try {   // carry over a start point saved by the previous version
   const old = JSON.parse(localStorage.getItem('gsm020start') || 'null');
-  if (old && isFinite(old.lat) && !loadPts('circuit').length) { localStorage.setItem('gsm020pts_circuit', JSON.stringify([{lat:old.lat, lon:old.lon, r:old.r || 8}])); if (tMode === 'circuit') tPts = loadPts('circuit'); }
+  if (old && isFinite(old.lat) && !loadPts('simple').length) { localStorage.setItem('gsm020pts_simple', JSON.stringify([{lat:old.lat, lon:old.lon, r:old.r || 8}])); if (tMode === 'simple') tPts = loadPts('simple'); }
 } catch (e) {}
 const fmtLap = ms => { if (ms == null) return '-'; const t = ms / 1000, m = Math.floor(t / 60); return `${m}:${(t - m*60).toFixed(1).padStart(4,'0')}`; };
 function distM2(a, b) {
@@ -583,10 +584,10 @@ function distM2(a, b) {
   return 2*R*Math.asin(Math.sqrt(h));
 }
 const rallyReady = () => tMode === 'rally' && tPts.length >= 2;
-const nSectors = () => tMode === 'circuit' ? (tPts.length > 1 ? tPts.length : 0) : (tPts.length >= 2 ? tPts.length - 1 : 0);
+const nSectors = () => isCircuit() ? (tPts.length > 1 ? tPts.length : 0) : (tPts.length >= 2 ? tPts.length - 1 : 0);
 const runWord = () => tMode === 'rally' ? 'รัน' : 'รอบ';
 function ptLabel(i) {
-  if (tMode === 'circuit') return i === 0 ? '🏁 สตาร์ท/เส้นชัย' : `S${i}|S${i+1}`;
+  if (isCircuit()) return i === 0 ? '🏁 สตาร์ท/เส้นชัย' : `S${i}|S${i+1}`;
   if (i === 0) return '🚩 สตาร์ท';
   if (i === tPts.length - 1 && tPts.length >= 2) return '🏁 เส้นชัย';
   return `จุดแบ่ง ${i}`;
@@ -613,6 +614,7 @@ function setMode(m) {
 }
 function addPoint(lat, lon, save) {
   const p = {lat, lon, r: Number($('lapR').value)};
+  if (tMode === 'simple') tPts = [];          // one start/finish point only: replace it
   if (tMode === 'rally' && tPts.length >= 2 && !addAsFinish) tPts.splice(tPts.length - 1, 0, p);   // new split goes before the finish
   else tPts.push(p);
   addAsFinish = false;
@@ -627,7 +629,7 @@ function lapFeed(s) {
   if (!tPts.length || s.lat === undefined) return;
   // which points can trigger now: the expected one, plus the line that ends the run
   const watch = new Set([nextIdx]);
-  if (lastCross) watch.add(tMode === 'circuit' ? 0 : tPts.length - 1);
+  if (lastCross) watch.add(isCircuit() ? 0 : tPts.length - 1);
   watch.forEach(i => {
     const p = tPts[i], st = ptState[i];
     if (!p || !st) return;
@@ -660,7 +662,7 @@ function finishRun(c) {
 }
 function onPass(i, c) {
   const last = tPts.length - 1;
-  if (tMode === 'circuit') {
+  if (isCircuit()) {
     if (i === 0) {
       if (lastCross && !finishRun(c)) return;
       if (!lastCross) lapUi('เริ่มจับเวลารอบแรกแล้ว');
@@ -736,7 +738,9 @@ function lapUi(note) {
   }).join('');
   // points summary + guidance
   $('ptList').textContent = tPts.length ? 'จุดจับเวลา: ' + tPts.map((_, i) => ptLabel(i).replace('|', '→')).join(' · ') : '';
-  $('btnAddPt').textContent = tMode === 'rally'
+  $('btnAddPt').textContent = tMode === 'simple'
+    ? (tPts.length ? 'ย้ายจุดสตาร์ทมาตรงนี้' : 'ตั้งจุดสตาร์ทตรงนี้')
+    : tMode === 'rally'
     ? (tPts.length === 0 ? 'ตั้งจุดสตาร์ทตรงนี้' : 'เพิ่มจุดแบ่งตรงนี้')
     : (tPts.length === 0 ? 'ตั้งสตาร์ท/เส้นชัยตรงนี้' : `เพิ่มจุดแบ่ง S${tPts.length}|S${tPts.length + 1} ตรงนี้`);
   $('btnFinish').hidden = tMode !== 'rally' || tPts.length === 0;
@@ -745,6 +749,8 @@ function lapUi(note) {
   if (!info) {
     if (!tPts.length) info = tMode === 'rally'
       ? 'ไปที่จุดออกสตาร์ทแล้วกด "ตั้งจุดสตาร์ทตรงนี้" จากนั้นไปตั้งจุดแบ่ง (ถ้ามี) และเส้นชัย หรือกดค้างบนแผนที่'
+      : tMode === 'simple'
+      ? 'วางรถที่เส้นสตาร์ทแล้วกด "ตั้งจุดสตาร์ทตรงนี้" (หรือกดค้างบนแผนที่ตรงเส้นสตาร์ท)'
       : 'วางรถที่เส้นสตาร์ทแล้วกด "ตั้งสตาร์ท/เส้นชัยตรงนี้" เพิ่มจุดแบ่งเซกเตอร์ได้ภายหลัง หรือกดค้างบนแผนที่';
     else if (tMode === 'rally' && tPts.length < 2) info = 'ต้องมีเส้นชัยด้วย: ไปที่เส้นชัยแล้วกด "ตั้งเส้นชัยตรงนี้"';
     else if (!demoTimer && gpsWatch === null) info = 'ต้องเปิด GPS มือถือจึงจะจับเวลาได้';

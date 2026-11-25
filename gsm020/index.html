@@ -83,12 +83,16 @@
   td.purple{color:#b57cff;font-weight:700}
   #tv .chips{justify-content:center;margin:6px 0 10px}
   #tv .chip{font-size:clamp(16px,4.5vw,26px);padding:6px 10px}
+  #map.editing{outline:3px solid var(--acc);outline-offset:2px}
+  .editbar{display:none;margin:6px 12px 0;padding:8px 10px;border-radius:10px;background:#12304a;border:1px solid var(--acc);font-size:13px;line-height:1.5}
+  .editbar.show{display:block}
+  .leaflet-popup-content button{min-height:36px;padding:6px 10px;margin-top:6px;background:#e74c3c;border-color:#e74c3c;color:#fff}
   #mapInfo{padding:4px 12px 0;font-size:12px;color:var(--warn)}
   .note{font-size:12px;color:var(--mut);line-height:1.5;padding:0 12px}
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker</h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-7</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -137,11 +141,12 @@
   <div class="btns" style="align-items:center">
     <button id="btnLapClear">ล้างเวลา</button>
     <button id="btnTv">⏱ หน้าจอจับเวลา</button>
+    <button id="btnEdit">✏️ แก้ไขจุดบนแผนที่</button>
     <span class="kv">เทียบกับ</span>
     <div class="seg" role="group" aria-label="เทียบกับ"><button data-ref="best">ดีที่สุด</button><button data-ref="prev">ครั้งที่แล้ว</button></div>
   </div>
   <div id="lapInfo"></div>
-  <div style="overflow-x:auto"><table class="laps" id="lapTable" hidden><thead><tr><th id="thRun">รอบ</th><th>เวลา</th><th id="thDelta">ต่างจากดีสุด</th><th id="thSecs" style="display:contents"></th><th>สูงสุด</th><th>เฉลี่ย</th></tr></thead><tbody></tbody></table></div>
+  <div style="overflow-x:auto"><table class="laps" id="lapTable" hidden><thead><tr id="lapHead"></tr></thead><tbody></tbody></table></div>
 </div>
 
 <div class="lap" id="liveBox">
@@ -161,6 +166,7 @@
 
 <div class="sec"><span>แผนที่ (ตำแหน่งจาก GPS มือถือ)</span><button id="btnGps" style="padding:6px 10px;min-height:36px">ใช้ GPS มือถือ: ปิด</button></div>
 <div id="mapInfo"></div>
+<div class="editbar" id="editBar"></div>
 <div id="map"></div>
 <div class="legend"><span>ช้า</span><div class="grad"></div><span>เร็ว (<span id="lgMax">0</span> km/h)</span></div>
 <p class="note">ตัวเลขบนเส้นทางคือความเร็ว (km/h) ทุก ~25 m ป้ายขอบแดงคือจุดที่เร็วที่สุด GSM020 ไม่ส่งพิกัด แผนที่ใช้ตำแหน่งจาก GPS มือถือ แล้วเติมจุดระหว่างตำแหน่งด้วยระยะทางจาก GSM020 ทุกค่าความเร็วจึงมีจุดของตัวเอง (เส้นทางจะขึ้นช้ากว่าความจริงประมาณ 1–2 วินาที) ใช้ได้เมื่อมือถือเคลื่อนที่ไปกับรถ แตะเส้นทางเพื่อดูความเร็ว ณ จุดนั้น</p>
@@ -336,7 +342,10 @@ const trackLayer = L.layerGroup().addTo(map);
 const me = L.circleMarker([0,0], {radius:7, color:'#000', weight:2, fillColor:'#fff', fillOpacity:1});
 let drawn = [], lastLabelDist = -1e9, maxPlaced = null, maxMarker = null, nFix = 0;
 map.on('dragstart', () => follow = false);
-map.on('click', () => { follow = true; });
+map.on('click', e => {
+  if (editing) { addPoint(e.latlng.lat, e.latlng.lng, true); editHint(); return; }
+  follow = true;
+});
 
 function color(v) {
   const r = Math.max(0, Math.min(1, maxSpd > 0 ? v / maxSpd : 0));
@@ -597,10 +606,42 @@ function drawPts() {
   ptLayer = L.layerGroup().addTo(map);
   tPts.forEach((p, i) => {
     L.circle([p.lat, p.lon], {radius:p.r, color:'#fff', weight:2, dashArray:'6 5', fillColor:'#fff', fillOpacity:0.12, interactive:false}).addTo(ptLayer);
-    L.marker([p.lat, p.lon], {interactive:false, zIndexOffset:900, icon:L.divIcon({className:'', iconSize:null,
-      html:`<div class="spdlbl" style="background:#fff;border-color:#111">${ptLabel(i)}</div>`})}).addTo(ptLayer);
+    const mk = L.marker([p.lat, p.lon], {interactive:editing, draggable:editing, zIndexOffset:900, icon:L.divIcon({className:'', iconSize:null,
+      html:`<div class="spdlbl" style="background:${editing ? '#ffe36e' : '#fff'};border-color:#111">${ptLabel(i)}</div>`})}).addTo(ptLayer);
+    if (editing) {
+      mk.on('dragend', () => { const ll = mk.getLatLng(); p.lat = ll.lat; p.lon = ll.lng; ptsChanged('ย้ายจุดแล้ว'); });
+      mk.bindPopup(`<b>${ptLabel(i).replace('|', '→')}</b><br>ลากเพื่อย้าย<br><button data-del="${i}">ลบจุดนี้</button>`);
+    }
   });
 }
+let editing = false;
+function ptsChanged(note) { savePts(); laps = []; resetRunState(); drawPts(); lapUi(note); editHint(); }
+function editHint() {
+  if (!editing) { $('editBar').classList.remove('show'); return; }
+  let next;
+  if (tMode === 'simple') next = tPts.length ? 'แตะแผนที่เพื่อย้ายจุดสตาร์ท/เส้นชัย' : 'แตะแผนที่ตรงเส้นสตาร์ท/เส้นชัย';
+  else if (tMode === 'circuit') next = tPts.length ? `แตะแผนที่เพื่อวางจุดแบ่ง S${tPts.length}→S${tPts.length + 1} (วางเรียงตามทิศทางที่รถวิ่ง)` : 'แตะแผนที่ตรงเส้นสตาร์ท/เส้นชัย';
+  else next = !tPts.length ? 'แตะแผนที่ตรงจุดออกสตาร์ท' : tPts.length === 1 ? 'แตะแผนที่ตรงเส้นชัย' : 'แตะแผนที่เพื่อเพิ่มจุดแบ่ง (วางเรียงตามทางที่รถวิ่ง)';
+  $('editBar').innerHTML = `<b>โหมดแก้ไขจุด:</b> ${next}<br>ลากธงสีเหลืองเพื่อย้าย · แตะธงเพื่อลบ · กด "✓ เสร็จ" เมื่อแก้เสร็จ`;
+  $('editBar').classList.add('show');
+}
+function setEditing(on) {
+  editing = on;
+  $('btnEdit').textContent = on ? '✓ เสร็จ' : '✏️ แก้ไขจุดบนแผนที่';
+  $('btnEdit').classList.toggle('on', on);
+  $('map').classList.toggle('editing', on);
+  if (on) {
+    follow = false;
+    const last = tPts[tPts.length - 1];
+    if (last) map.setView([last.lat, last.lon], Math.max(map.getZoom(), 18), {animate:false});
+    $('map').scrollIntoView({behavior:'smooth', block:'center'});
+  }
+  drawPts(); editHint();
+}
+map.on('popupopen', e => {
+  const b = e.popup.getElement().querySelector('[data-del]');
+  if (b) b.onclick = () => { const i = Number(b.dataset.del); map.closePopup(); tPts.splice(i, 1); ptsChanged('ลบจุดแล้ว'); };
+});
 function resetRunState() {
   lastCross = null; secStart = null; curSecs = []; nextIdx = 0;
   ptState = tPts.map(() => ({in:false, minD:Infinity, minS:null, stopS:null}));
@@ -610,7 +651,7 @@ function setMode(m) {
   if (m === tMode) return;
   tMode = m; tPts = loadPts(m); laps = []; resetRunState(); savePts(); drawPts();
   document.querySelectorAll('[data-tmode]').forEach(b => b.classList.toggle('sel', b.dataset.tmode === m));
-  lapUi();
+  lapUi(); editHint();
 }
 function addPoint(lat, lon, save) {
   const p = {lat, lon, r: Number($('lapR').value)};
@@ -721,9 +762,8 @@ function lapUi(note) {
   // table
   const tb = $('lapTable');
   tb.hidden = !laps.length;
-  $('thRun').textContent = W;
-  $('thDelta').textContent = refMode === 'best' ? 'ต่างจากดีสุด' : `ต่างจาก${W}ก่อน`;
-  $('thSecs').innerHTML = Array.from({length:n}, (_, k) => `<th>S${k+1}</th>`).join('');
+  $('lapHead').innerHTML = `<th>${W}</th><th>เวลา</th><th>${refMode === 'best' ? 'ต่างจากดีสุด' : `ต่างจาก${W}ก่อน`}</th>` +
+    Array.from({length:n}, (_, k) => `<th>S${k+1}</th>`).join('') + '<th>สูงสุด</th><th>เฉลี่ย</th>';
   tb.tBodies[0].innerHTML = laps.slice().reverse().map(l => {
     let cell;
     if (refMode === 'best') cell = l.ms === best ? 'ดีที่สุด' : fmtDelta(l.ms - best);
@@ -767,9 +807,10 @@ function addHere(asFinish) {
 }
 $('btnAddPt').onclick = () => addHere(false);
 $('btnFinish').onclick = () => addHere(true);
-$('btnUndoPt').onclick = () => { if (!tPts.length) return; tPts.pop(); savePts(); laps = []; resetRunState(); drawPts(); lapUi('ลบจุดล่าสุดแล้ว'); };
-$('btnClearPts').onclick = () => { tPts = []; savePts(); laps = []; resetRunState(); drawPts(); lapUi('ล้างจุดทั้งหมดแล้ว'); };
-map.on('contextmenu', e => { addPoint(e.latlng.lat, e.latlng.lng, true); lapUi('เพิ่มจุดจากแผนที่แล้ว'); });
+$('btnUndoPt').onclick = () => { if (!tPts.length) return; tPts.pop(); savePts(); laps = []; resetRunState(); drawPts(); lapUi('ลบจุดล่าสุดแล้ว'); editHint(); };
+$('btnClearPts').onclick = () => { tPts = []; savePts(); laps = []; resetRunState(); drawPts(); lapUi('ล้างจุดทั้งหมดแล้ว'); editHint(); };
+map.on('contextmenu', e => { addPoint(e.latlng.lat, e.latlng.lng, true); lapUi('เพิ่มจุดจากแผนที่แล้ว'); editHint(); });
+$('btnEdit').onclick = () => setEditing(!editing);
 $('lapR').onchange = () => { const r = Number($('lapR').value); tPts.forEach(p => p.r = r); savePts(); drawPts(); };
 $('btnLapClear').onclick = () => clearLaps();
 document.querySelectorAll('[data-tmode]').forEach(b => { b.onclick = () => setMode(b.dataset.tmode); b.classList.toggle('sel', b.dataset.tmode === tMode); });

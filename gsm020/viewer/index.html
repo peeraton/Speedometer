@@ -83,7 +83,7 @@
       <div class="kv">ดีที่สุด<b id="lapBest" class="neg">-</b><span id="lapBestN"></span></div>
     </div>
     <div class="chips" id="secNow"></div>
-    <div style="overflow-x:auto"><table class="laps" id="lapTable" hidden><thead><tr><th id="thRun">รอบ</th><th>เวลา</th><th id="thD">ต่างจากดีสุด</th><th id="thSecs" style="display:contents"></th><th>สูงสุด</th><th>เฉลี่ย</th></tr></thead><tbody></tbody></table></div>
+    <div style="overflow-x:auto"><table class="laps" id="lapTable" hidden><thead><tr id="lapHead"></tr></thead><tbody></tbody></table></div>
   </div>
   <div id="status"></div>
   <div class="sec">ความเร็วตามเวลา</div>
@@ -198,13 +198,14 @@ function start(room) {
     $('lapBox').hidden = !(l.start || l.n);
     const prevMode = l.ref === 'prev';
     $('dLbl').textContent = prevMode ? 'ต่างจากรอบที่แล้ว' : 'ต่างจากรอบดีที่สุด';
-    $('thD').textContent = prevMode ? 'ต่างจากรอบก่อน' : 'ต่างจากดีสุด';
+
     const W = l.mode === 'rally' ? 'รัน' : 'รอบ';
     $('lapNo').textContent = l.el == null ? (l.mode === 'rally' ? 'รอออกสตาร์ท' : 'รอผ่านจุดสตาร์ท') : `${W}ที่ ${l.n + 1}`;
-    $('thRun').textContent = W;
+
     secRecv = Date.now();
     const ns = l.nSec || 0, bs = l.bestSecs || [];
-    $('thSecs').innerHTML = Array.from({length:ns}, (_, k) => `<th>S${k+1}</th>`).join('');
+    $('lapHead').innerHTML = `<th>${W}</th><th>เวลา</th><th>${prevMode ? `ต่างจาก${W}ก่อน` : 'ต่างจากดีสุด'}</th>` +
+      Array.from({length:ns}, (_, k) => `<th>S${k+1}</th>`).join('') + '<th>สูงสุด</th><th>เฉลี่ย</th>';
     $('secNow').innerHTML = !ns ? '' : Array.from({length:ns}, (_, k) => {
       const v = (l.secs || [])[k];
       if (v != null) { const d = bs[k] == null ? null : v - bs[k];

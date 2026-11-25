@@ -95,7 +95,7 @@
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-9</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.25-10</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -130,6 +130,25 @@
   </div>
   <div class="note" style="padding:6px 0 0">ค่าเริ่มต้นเหมาะกับรถ RC 1/10 (2.0 kg, CdA 0.016, Crr 0.02) รถ 1/8 ลองน้ำหนัก 3.5–4.5 kg, CdA 0.03 · แก้แล้วคำนวณใหม่ทั้งรอบทันที</div>
 </details>
+
+<div class="lap" id="accBox">
+  <div class="btns" style="margin-top:0;align-items:center"><b style="font-size:15px">จับเวลาอัตราเร่ง</b>
+    <div class="seg" role="group" aria-label="โหมดอัตราเร่ง"><button data-amode="dist">ตามระยะทาง</button><button data-amode="spd">ตามความเร็ว</button></div>
+  </div>
+  <div class="btns" style="align-items:center">
+    <select id="accTgt" aria-label="เป้าหมาย"></select>
+    <input id="accCustom" type="number" inputmode="decimal" min="1" step="any" style="width:9.5em;font-size:16px;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);min-height:44px">
+    <button id="btnAccClear">ล้างผล</button>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <div><div class="kv" id="accMainLbl">0–30 m</div><div class="cur" id="accMain">-.--</div></div>
+    <div class="kv" style="margin-left:auto"><span id="accTrapLbl">ความเร็วปลาย</span><b id="accTrap">-</b></div>
+    <div class="kv">ดีที่สุด<b id="accBest" style="color:var(--ok)">-</b></div>
+  </div>
+  <div class="kv" id="accStatus" style="margin-top:6px;font-size:13px"></div>
+  <div class="chips" id="accSplits"></div>
+  <div style="overflow-x:auto"><table class="laps" id="accTable" hidden><thead><tr id="accHead"></tr></thead><tbody></tbody></table></div>
+</div>
 
 <div class="lap" id="lapBox">
   <div class="btns" style="margin-top:0;align-items:center"><span class="kv">โหมด</span>
@@ -243,7 +262,8 @@ let gps = null, gpsWatch = null, follow = true;
 let fixes = [], assignIdx = 0;
 
 function resetRun() {
-  samples = []; maxSpd = 0; maxAcc = 0; maxPw = 0; accF = 0; distBase = 0; lastDistRaw = null; distM = 0; t0 = null;
+  samples = []; maxSpd = 0; maxAcc = 0; maxPw = 0;
+  accRun = null; accState = 'wait'; stillSince = null; accF = 0; distBase = 0; lastDistRaw = null; distM = 0; t0 = null;
   fixes = []; assignIdx = 0; lastLabelDist = -1e9; maxPlaced = null; nFix = 0;
   if (maxMarker) { maxMarker.remove(); maxMarker = null; }
   trackLayer.clearLayers(); drawn = []; drawChart(); updateStats(null);
@@ -272,6 +292,7 @@ function onLive(rec) {
   s.pw = powerW(s.spd, s.acc);
   if (s.pw > maxPw) maxPw = s.pw;
   samples.push(s);
+  accFeed(s);
   maxSpd = Math.max(maxSpd, rec.speed);
   maxAcc = Math.max(maxAcc, Math.abs(acc) / G);
   updateStats(s);
@@ -907,6 +928,138 @@ document.querySelectorAll('[data-chart]').forEach(b => b.onclick = () => {
   document.querySelectorAll('[data-chart]').forEach(x => x.classList.toggle('sel', x === b));
   drawChart();
 });
+
+// ---------- acceleration test (drag style) ----------
+// Stop the car (standstill >= 0.5 s), then launch. Every run records the time to every
+// distance and every speed in the lists below, plus the custom targets.
+// Launch time = when speed leaves 0 km/h (back-extrapolated); targets are interpolated too.
+const ACC_DIST = [10, 20, 30, 50, 100, 200], ACC_SPD = [20, 30, 40, 50, 60, 80, 100];
+const V_STILL = 1.0, V_GO = 2.0, ACC_MAX_MS = 60000;
+let accMode = 'dist', accT = {dist: 30, spd: 50};
+try {
+  const j = JSON.parse(localStorage.getItem('gsm020acc') || 'null');
+  if (j) { accMode = j.mode === 'spd' ? 'spd' : 'dist'; if (j.dist > 0) accT.dist = j.dist; if (j.spd > 0) accT.spd = j.spd; }
+} catch (e) {}
+let accState = 'wait', stillSince = null, readyS = null, prevStill = null, accRun = null, accRuns = [], accLastMsg = '';
+const fmtS = ms => ms == null ? '-' : (ms / 1000).toFixed(2) + ' s';
+const accSave = () => { try { localStorage.setItem('gsm020acc', JSON.stringify({mode:accMode, ...accT})); } catch (e) {} };
+const dTargets = () => [...new Set([...ACC_DIST, accT.dist])].sort((a, b) => a - b);
+const vTargets = () => [...new Set([...ACC_SPD, accT.spd])].sort((a, b) => a - b);
+
+function accFeed(s) {
+  if (accState !== 'run') {
+    if (s.spd < V_STILL) {
+      if (stillSince == null) stillSince = s.t;
+      prevStill = readyS; readyS = s;
+      if (accState === 'wait' && s.t - stillSince >= 500) { accState = 'ready'; accLastMsg = ''; }
+    } else if (accState === 'ready' && s.spd >= V_GO && readyS) {
+      // launch: time when speed passed 0.5 km/h, between the last still sample and this one
+      // launch = when speed left 0 km/h, back-extrapolated from the last slow sample at the launch
+      // acceleration (0.2 km/h is ignored as standstill GNSS noise); never before the sample prior to it
+      const slope = (s.spd - readyS.spd) / Math.max(1, s.t - readyS.t);            // km/h per ms
+      const vr = Math.max(0, readyS.spd - 0.2);
+      let t0 = slope > 0 ? readyS.t - vr / slope : readyS.t;
+      if (prevStill) t0 = Math.max(prevStill.t, t0);
+      const d0 = Math.max(0, readyS.dist - (readyS.spd / 3.6) * (readyS.t - t0) / 2000);
+      accRun = {t0, d0, prev: {t: t0, v: 0, d: 0}, dist: {}, spd: {}, max: 0};
+      accState = 'run';
+    } else if (accState !== 'ready') stillSince = null;
+    if (accState !== 'run') { accUi(); return; }
+  }
+  // running
+  const r = accRun, d = Math.max(0, s.dist - r.d0), el = s.t - r.t0, p = r.prev;
+  dTargets().forEach(x => {
+    if (r.dist[x] || d < x) return;
+    const f = d > p.d ? (x - p.d) / (d - p.d) : 1;
+    r.dist[x] = {ms: p.t + (s.t - p.t) * f - r.t0, v: p.v + (s.spd - p.v) * f};
+  });
+  vTargets().forEach(x => {
+    if (r.spd[x] || s.spd < x) return;
+    const f = s.spd > p.v ? (x - p.v) / (s.spd - p.v) : 1;
+    r.spd[x] = {ms: p.t + (s.t - p.t) * f - r.t0, d: p.d + (d - p.d) * f};
+  });
+  r.prev = {t: s.t, v: s.spd, d};
+  r.max = Math.max(r.max, s.spd);
+  r.el = el; r.d = d; r.v = s.spd;
+  const allDone = dTargets().every(x => r.dist[x]) && vTargets().every(x => r.spd[x]);
+  const lifted = r.max > 8 && s.spd < r.max * 0.6;           // driver backed off / braked
+  if (allDone || lifted || s.spd < V_STILL || el > ACC_MAX_MS) accFinish();
+  accUi();
+}
+function accFinish() {
+  const r = accRun;
+  accState = 'wait'; stillSince = null; accRun = null;
+  if (!Object.keys(r.dist).length && !Object.keys(r.spd).length) { accLastMsg = 'ยังไม่ถึงเป้าหมายแรก ไม่นับครั้งนี้'; return; }
+  accRuns.push({n: accRuns.length + 1, dist: r.dist, spd: r.spd, max: r.max});
+  const k = accMode === 'dist' ? r.dist[accT.dist] : r.spd[accT.spd];
+  accLastMsg = k ? `ได้ผลแล้ว ${accLabel()} ${fmtS(k.ms)} · หยุดรถให้นิ่งเพื่อวัดครั้งต่อไป` : `ครั้งนี้ไปไม่ถึง ${accLabel()} · หยุดรถให้นิ่งเพื่อวัดครั้งต่อไป`;
+  try { navigator.vibrate && navigator.vibrate([100, 60, 100]); } catch (e) {}
+  $('accBox').classList.remove('flash'); void $('accBox').offsetWidth; $('accBox').classList.add('flash');
+}
+const accLabel = () => accMode === 'dist' ? `0–${accT.dist} m` : `0–${accT.spd} km/h`;
+const accKey = run => accMode === 'dist' ? run.dist[accT.dist] : run.spd[accT.spd];
+
+function accUi() {
+  const show = accRun || accRuns[accRuns.length - 1] || null;
+  const hits = accRuns.map(accKey).filter(Boolean).map(h => h.ms);
+  const best = hits.length ? Math.min(...hits) : null;
+  $('accMainLbl').textContent = accLabel();
+  if (accRun) {
+    const h = accKey(accRun);
+    $('accMain').textContent = h ? fmtS(h.ms) : fmtS(accRun.el);
+    $('accMain').style.color = h ? 'var(--ok)' : '';
+  } else {
+    const h = show ? accKey(show) : null;
+    $('accMain').textContent = h ? fmtS(h.ms) : '-.--';
+    $('accMain').style.color = '';
+  }
+  const h = show ? accKey(show) : null;
+  $('accTrapLbl').textContent = accMode === 'dist' ? 'ความเร็วปลาย' : 'ระยะที่ใช้';
+  $('accTrap').textContent = !h ? '-' : accMode === 'dist' ? `${h.v.toFixed(1)} km/h` : `${h.d.toFixed(1)} m`;
+  $('accBest').textContent = fmtS(best);
+  // status
+  let st, col = 'var(--warn)';
+  if (accState === 'run') { st = `กำลังวัด… ${fmtS(accRun.el)} · ${accRun.v.toFixed(0)} km/h · ${accRun.d.toFixed(1)} m`; col = 'var(--acc)'; }
+  else if (!samples.length) st = 'รอข้อมูลจาก GSM020 (ไฟเขียว)';
+  else if (accState === 'ready') { st = 'พร้อม ✓ ออกตัวได้เลย'; col = 'var(--ok)'; }
+  else st = accLastMsg || 'หยุดรถให้นิ่งสักครู่ แล้วออกตัวเต็มที่';
+  $('accStatus').textContent = st; $('accStatus').style.color = col;
+  // splits of the run on screen
+  $('accSplits').innerHTML = !show ? '' : (accMode === 'dist'
+    ? dTargets().map(x => { const v = show.dist[x]; return `<span class="chip ${x === accT.dist ? 'now' : ''}"><em>${x} m</em> ${v ? fmtS(v.ms) + ` <small>${v.v.toFixed(0)} km/h</small>` : '-'}</span>`; })
+    : vTargets().map(x => { const v = show.spd[x]; return `<span class="chip ${x === accT.spd ? 'now' : ''}"><em>0–${x}</em> ${v ? fmtS(v.ms) : '-'}</span>`; })
+  ).join('');
+  // history table for the chosen target
+  const tb = $('accTable');
+  tb.hidden = !accRuns.length;
+  $('accHead').innerHTML = `<th>ครั้ง</th><th>${accLabel()}</th><th>ต่างจากดีสุด</th><th>${accMode === 'dist' ? 'ความเร็วปลาย' : 'ระยะที่ใช้'}</th><th>สูงสุด km/h</th>`;
+  tb.tBodies[0].innerHTML = accRuns.slice().reverse().map(r => {
+    const k = accKey(r);
+    const d = k && best != null ? k.ms - best : null;
+    return `<tr class="${k && k.ms === best ? 'best' : ''}"><td>${r.n}</td><td>${k ? fmtS(k.ms) : 'ไม่ถึง'}</td>` +
+           `<td class="${d >= 5 ? 'pos' : ''}">${k ? (k.ms === best ? 'ดีที่สุด' : '+' + (d / 1000).toFixed(2) + ' s') : '-'}</td>` +
+           `<td>${!k ? '-' : accMode === 'dist' ? k.v.toFixed(1) : k.d.toFixed(1) + ' m'}</td><td>${r.max.toFixed(1)}</td></tr>`;
+  }).join('');
+}
+function accFillTargets() {
+  const list = accMode === 'dist' ? ACC_DIST : ACC_SPD, cur = accMode === 'dist' ? accT.dist : accT.spd;
+  const unit = accMode === 'dist' ? 'm' : 'km/h';
+  $('accTgt').innerHTML = [...new Set([...list, cur])].sort((a, b) => a - b)
+    .map(v => `<option value="${v}" ${v === cur ? 'selected' : ''}>${accMode === 'dist' ? '0–' + v + ' m' : '0–' + v + ' km/h'}</option>`).join('');
+  $('accCustom').placeholder = `กำหนดเอง (${unit})`;
+  $('accCustom').value = '';
+  document.querySelectorAll('[data-amode]').forEach(b => b.classList.toggle('sel', b.dataset.amode === accMode));
+}
+function accSetTarget(v) {
+  if (!(v > 0)) return;
+  if (accMode === 'dist') accT.dist = v; else accT.spd = v;
+  accSave(); accFillTargets(); accUi();
+}
+document.querySelectorAll('[data-amode]').forEach(b => b.onclick = () => { accMode = b.dataset.amode; accSave(); accFillTargets(); accUi(); });
+$('accTgt').onchange = () => accSetTarget(Number($('accTgt').value));
+$('accCustom').onchange = () => accSetTarget(Math.round(parseFloat($('accCustom').value) * 10) / 10);
+$('btnAccClear').onclick = () => { accRuns = []; accLastMsg = ''; accUi(); };
+accFillTargets(); accUi();
 
 // ---------- reference lap + deltas ----------
 let refMode = 'best';

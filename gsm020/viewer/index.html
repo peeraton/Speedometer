@@ -138,7 +138,7 @@
 </div>
 
 <div id="app" hidden>
-  <header><h1>GSM020 Live <span id="roomLbl" style="color:var(--mut);font-weight:400;font-size:12px"></span></h1><span class="live" id="live">OFFLINE</span></header>
+  <header><h1>GSM020 Live <span id="roomLbl" style="color:var(--mut);font-weight:400;font-size:12px"></span></h1><span id="vBat" style="display:none;font-size:12px;margin-left:auto;margin-right:8px">🔋 GSM020 <b id="vBatV"></b>%</span><span class="live" id="live">OFFLINE</span></header>
   <div class="top">
     <div class="big"><span id="spd">0.0</span><small>km/h</small></div>
     <div class="grid">
@@ -751,6 +751,10 @@ function start(room) {
     $('avg').textContent = (d.avg ?? 0).toFixed(1);
     $('acc').textContent = (d.acc ?? 0).toFixed(2);
     $('dist').textContent = (d.dist ?? 0).toLocaleString();
+    if (d.bat != null && d.bat >= 0 && d.bat <= 100) {
+      $('vBat').style.display = ''; $('vBatV').textContent = d.bat;
+      $('vBat').style.color = d.bat <= 15 ? '#ff5a5f' : d.bat <= 30 ? '#f1c40f' : '';
+    }
     if (d.pw != null) { $('pw').textContent = d.pw; $('pmax').textContent = d.pmax ?? 0; hudPw = d.pw; }
     if (d.acc != null) hudG = d.acc;
     $('lg').textContent = maxSpd.toFixed(0);

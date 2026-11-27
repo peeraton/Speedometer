@@ -117,21 +117,25 @@
   .hud-bot{bottom:max(14px,env(safe-area-inset-bottom));left:10px}
   .hud-bot .pane{display:flex;gap:16px;align-items:flex-end}
   .hud .neg{color:#2ecc71} .hud .pos{color:#ff6b6b}
-  .pbar{display:none;position:absolute;z-index:1150;left:6px;right:6px;bottom:6px;align-items:center;gap:4px 6px;flex-wrap:wrap;
-        background:rgba(5,7,10,.75);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:3px 5px;color:#fff;font-variant-numeric:tabular-nums}
+  #mapWrap .pbar{display:none;position:absolute;z-index:1150;left:58px;right:6px;bottom:4px;align-items:center;gap:2px 5px;flex-wrap:wrap;
+        background:rgba(5,7,10,.7);border-radius:8px;padding:2px 4px;color:#fff;font-variant-numeric:tabular-nums}
   #mapWrap.pb .pbar{display:flex}
-  .pbar button,.pbar select{min-height:30px;padding:2px 7px;font-size:13px;border-radius:8px}
-  .pbar #pbPlay{min-width:38px;font-size:15px}
-  .pbar input[type=range]{flex:1 1 90px;min-width:80px;height:20px;margin:0;accent-color:var(--acc)}
-  .pbar .pbt{font-size:11px;white-space:nowrap}
-  .pbar .pbl{flex-basis:100%;font-size:11px;color:#cfd6de;display:flex;gap:10px;flex-wrap:wrap;line-height:1.2;padding:0 2px}
-  .pbar .pbl b{color:#fff;font-size:12px}
-  .pbar .pbl:empty{display:none}
-  .pbar #pbFollow.on{background:var(--acc);color:#000}
+  #mapWrap .pbar button,#mapWrap .pbar select{min-height:0;height:26px;padding:0 6px;font-size:12px;line-height:1;border-radius:6px;
+        background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2)}
+  #mapWrap .pbar select{padding:0 2px;width:50px}
+  #mapWrap .pbar #pbPlay{width:30px;padding:0;font-size:13px}
+  #mapWrap .pbar #pbFollow{width:26px;padding:0}
+  #mapWrap .pbar #pbFollow.on{background:var(--acc);color:#000;border-color:var(--acc)}
+  #mapWrap .pbar input[type=range]{flex:1 1 60px;min-width:50px;height:16px;margin:0;accent-color:var(--acc)}
+  #mapWrap .pbar .pbt{font-size:10px;white-space:nowrap;opacity:.9}
+  #mapWrap .pbar .pbl{flex-basis:100%;font-size:10px;color:#cfd6de;display:flex;gap:8px;line-height:1.2;padding:0 2px 1px}
+  #mapWrap .pbar .pbl b{color:#fff;font-size:11px}
+  #mapWrap .pbar .pbl:empty{display:none}
+  #mapWrap.full .pbar{left:6px}
   #mapWrap.full .pbar .pbl{display:none}
-  #mapWrap.full.pb .hud-bot{bottom:calc(max(14px,env(safe-area-inset-bottom)) + 44px)}
-  #mapWrap.full.pb .pbar{bottom:max(6px,env(safe-area-inset-bottom))}
-  #mapWrap.pb .wheelw{bottom:70px}
+  #mapWrap.full.pb .hud-bot{bottom:calc(max(14px,env(safe-area-inset-bottom)) + 36px)}
+  #mapWrap.full.pb .pbar{bottom:max(4px,env(safe-area-inset-bottom))}
+  #mapWrap.pb .wheelw{bottom:52px}
   .fullbtn{width:44px;height:44px;font-size:22px;line-height:40px;text-align:center;background:#fff;color:#111;border:2px solid rgba(0,0,0,.25);border-radius:8px;cursor:pointer;padding:0;min-height:0}
   #tv .main{justify-content:flex-start;margin-top:clamp(8px,3vh,28px)}
   #tv .tvtimes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
@@ -157,7 +161,7 @@
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.27-32</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.27-33</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -295,12 +299,12 @@
   <div><span class="lbl">กำลัง W</span><span class="mid" id="hPw" style="color:#b57cff">0</span></div>
 </div></div>
 <div class="pbar" id="pbar">
-  <button id="pbPlay" title="เล่น / หยุด" aria-label="เล่น หรือ หยุด">▶</button>
+  <button id="pbPlay" title="เล่น / หยุด" aria-label="เล่น หรือ หยุด">▶︎</button>
   <input type="range" id="pbSeek" min="0" max="1000" value="0" aria-label="ตำแหน่งเวลาในการเล่น">
   <span class="pbt" id="pbTime">0:00 / 0:00</span>
   <select id="pbRate" aria-label="ความเร็วการเล่น"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option><option value="16">16×</option></select>
   <button id="pbFollow" class="on" title="ให้แผนที่ตามรถ" aria-label="ให้แผนที่ตามรถ">◎</button>
-  <div class="pbl"><span><b id="pbSpd">0</b> km/h</span><span>G <b id="pbG">0.00</b></span><span id="pbLap"></span><span id="pbDelta"></span></div>
+  <div class="pbl" id="pbl"><span hidden><b id="pbSpd">0</b><b id="pbG">0.00</b></span><span id="pbLap"></span><span id="pbDelta"></span></div>
 </div>
 <div class="wheelw" id="wheelW" aria-hidden="true">
   <svg viewBox="-50 -50 100 100"><g id="wheelG">
@@ -1872,6 +1876,7 @@ function pbRender() {
   $('pbLap').innerHTML = s.lap ? `${W}ที่ ${s.lap.n} <b>${fmtLap(s.lap.el)}</b>` : '';
   const d = s.lap ? s.lap.delta : null;
   $('pbDelta').innerHTML = d == null ? '' : `เทียบดีสุด <b style="color:${d < 0 ? '#2ecc71' : d > 0 ? '#ff6b6b' : '#fff'}">${fmtDelta(d)}</b>`;
+  $('pbl').style.display = s.lap ? '' : 'none';
   $('pbTime').textContent = `${mmss(pb.t - T0)} / ${mmss(dur)}`;
   if (document.activeElement !== $('pbSeek')) $('pbSeek').value = String(Math.round((pb.t - T0) / Math.max(1, dur) * 1000));
   wheelShow(s.sw != null ? s.sw : null, s.sw != null && s.us != null ? s.us : null);
@@ -1886,10 +1891,10 @@ function pbFrame(now) {
 function pbPlay() {
   if (!viewing || samples.length < 2) return;
   if (pb.t == null || pb.t >= pbT1()) pb.t = pbT0();
-  pb.playing = true; pb.last = performance.now(); $('pbPlay').textContent = '⏸';
+  pb.playing = true; pb.last = performance.now(); $('pbPlay').textContent = '❚❚';
   requestAnimationFrame(pbFrame);
 }
-function pbPause() { pb.playing = false; $('pbPlay').textContent = '▶'; }
+function pbPause() { pb.playing = false; $('pbPlay').textContent = '▶\uFE0E'; }
 function pbInit() {
   pbEnd();
   if (samples.length < 2) return;

@@ -117,19 +117,21 @@
   .hud-bot{bottom:max(14px,env(safe-area-inset-bottom));left:10px}
   .hud-bot .pane{display:flex;gap:16px;align-items:flex-end}
   .hud .neg{color:#2ecc71} .hud .pos{color:#ff6b6b}
-  .pbar{display:none;position:absolute;z-index:1150;left:8px;right:8px;bottom:8px;align-items:center;gap:8px;flex-wrap:wrap;
-        background:rgba(5,7,10,.82);border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:6px 8px;color:#fff;font-variant-numeric:tabular-nums}
+  .pbar{display:none;position:absolute;z-index:1150;left:6px;right:6px;bottom:6px;align-items:center;gap:4px 6px;flex-wrap:wrap;
+        background:rgba(5,7,10,.75);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:3px 5px;color:#fff;font-variant-numeric:tabular-nums}
   #mapWrap.pb .pbar{display:flex}
-  .pbar button,.pbar select{min-height:40px;padding:4px 10px;font-size:16px}
-  .pbar #pbPlay{min-width:52px;font-size:20px}
-  .pbar input[type=range]{flex:1 1 140px;min-width:120px;accent-color:var(--acc)}
-  .pbar .pbt{font-size:13px;white-space:nowrap}
-  .pbar .pbl{flex-basis:100%;font-size:13px;color:#cfd6de;display:flex;gap:12px;flex-wrap:wrap}
-  .pbar .pbl b{color:#fff;font-size:15px}
+  .pbar button,.pbar select{min-height:30px;padding:2px 7px;font-size:13px;border-radius:8px}
+  .pbar #pbPlay{min-width:38px;font-size:15px}
+  .pbar input[type=range]{flex:1 1 90px;min-width:80px;height:20px;margin:0;accent-color:var(--acc)}
+  .pbar .pbt{font-size:11px;white-space:nowrap}
+  .pbar .pbl{flex-basis:100%;font-size:11px;color:#cfd6de;display:flex;gap:10px;flex-wrap:wrap;line-height:1.2;padding:0 2px}
+  .pbar .pbl b{color:#fff;font-size:12px}
+  .pbar .pbl:empty{display:none}
   .pbar #pbFollow.on{background:var(--acc);color:#000}
-  #mapWrap.full.pb .hud-bot{bottom:calc(max(14px,env(safe-area-inset-bottom)) + 96px)}
-  #mapWrap.full.pb .pbar{bottom:max(10px,env(safe-area-inset-bottom))}
-  #mapWrap.pb .wheelw{bottom:104px}
+  #mapWrap.full .pbar .pbl{display:none}
+  #mapWrap.full.pb .hud-bot{bottom:calc(max(14px,env(safe-area-inset-bottom)) + 44px)}
+  #mapWrap.full.pb .pbar{bottom:max(6px,env(safe-area-inset-bottom))}
+  #mapWrap.pb .wheelw{bottom:70px}
   .fullbtn{width:44px;height:44px;font-size:22px;line-height:40px;text-align:center;background:#fff;color:#111;border:2px solid rgba(0,0,0,.25);border-radius:8px;cursor:pointer;padding:0;min-height:0}
   #tv .main{justify-content:flex-start;margin-top:clamp(8px,3vh,28px)}
   #tv .tvtimes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
@@ -155,7 +157,7 @@
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.27-31</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.27-32</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>

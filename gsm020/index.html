@@ -161,7 +161,7 @@
 </style>
 </head>
 <body>
-<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.27-33</span></h1><span id="devName" class="note"></span></header>
+<header><div class="dot" id="dot"></div><h1>GSM020 Speed Tracker <span style="font-size:11px;color:var(--mut);font-weight:400">v2026.11.27-34</span></h1><span id="devName" class="note"></span></header>
 <div class="bar">
   <button class="pri" id="btnConnect">เชื่อมต่อ GSM020</button>
   <button id="btnStop">หยุด</button>
@@ -1049,6 +1049,27 @@ function stopAll() {
   if (d && d.gatt.connected) d.gatt.disconnect();
   $('dot').classList.remove('on');
 }
+
+// ---------- keep the screen on while recording ----------
+// A web page stops getting Bluetooth/GPS data when the screen turns off, so hold a wake lock while recording
+// (the browser drops it whenever the page is hidden; it is taken again when the page comes back).
+let recWake = null, recHiddenAt = null;
+const recording = () => !!(polling || phoneRec || demoTimer);
+async function recWakeCheck() {
+  const want = recording() && document.visibilityState === 'visible';
+  if (want && !recWake && navigator.wakeLock) {
+    try { recWake = await navigator.wakeLock.request('screen'); recWake.addEventListener('release', () => { recWake = null; }); } catch (e) {}
+  } else if (!recording() && recWake) { try { await recWake.release(); } catch (e) {} recWake = null; }
+}
+setInterval(recWakeCheck, 2000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { if (recording()) recHiddenAt = Date.now(); return; }
+  recWakeCheck();
+  if (recHiddenAt) {
+    const sec = Math.round((Date.now() - recHiddenAt) / 1000); recHiddenAt = null;
+    if (sec >= 3) msg(`⚠️ หน้าจอดับหรือสลับแอปไป ${sec} วินาที ข้อมูลช่วงนั้นอาจขาดหาย ระหว่างบันทึกให้เปิดหน้านี้ค้างไว้`);
+  }
+});
 
 $('btnConnect').onclick = () => src === 'phone' ? startPhone() : connect();
 srcUi();
